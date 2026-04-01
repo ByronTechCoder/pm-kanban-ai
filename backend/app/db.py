@@ -70,12 +70,21 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(column_id) REFERENCES columns(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS comments (
+                id TEXT PRIMARY KEY,
+                card_id TEXT NOT NULL,
+                author TEXT NOT NULL,
+                text TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(card_id) REFERENCES cards(id) ON DELETE CASCADE
+            );
             CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
             CREATE INDEX IF NOT EXISTS idx_boards_user_id ON boards(user_id);
             CREATE INDEX IF NOT EXISTS idx_columns_board_id ON columns(board_id);
             CREATE INDEX IF NOT EXISTS idx_columns_order_index ON columns(order_index);
             CREATE INDEX IF NOT EXISTS idx_cards_column_id ON cards(column_id);
             CREATE INDEX IF NOT EXISTS idx_cards_order_index ON cards(order_index);
+            CREATE INDEX IF NOT EXISTS idx_comments_card_id ON comments(card_id);
             """
         )
         # Migrate existing users table if missing new columns
@@ -363,3 +372,46 @@ def replace_board(board_id: str, board: dict[str, Any]) -> None:
             (now, board_id),
         )
         conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Comments
+# ---------------------------------------------------------------------------
+
+def get_comments(card_id: str) -> list[dict[str, Any]]:
+    """Return all comments for a card ordered by created_at."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, card_id, author, text, created_at FROM comments WHERE card_id = ? ORDER BY created_at",
+            (card_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def add_comment(card_id: str, author: str, text: str) -> dict[str, Any]:
+    """Add a comment to a card and return it."""
+    comment_id = str(uuid.uuid4())
+    now = _utc_now()
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO comments (id, card_id, author, text, created_at) VALUES (?, ?, ?, ?, ?)",
+            (comment_id, card_id, author, text, now),
+        )
+        conn.commit()
+    return {"id": comment_id, "card_id": card_id, "author": author, "text": text, "created_at": now}
+
+
+def card_accessible_by_user(card_id: str, username: str) -> bool:
+    """Check if a card belongs to any board owned by the user."""
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT cards.id FROM cards
+            JOIN columns ON cards.column_id = columns.id
+            JOIN boards ON columns.board_id = boards.id
+            JOIN users ON boards.user_id = users.id
+            WHERE cards.id = ? AND users.username = ?
+            """,
+            (card_id, username),
+        ).fetchone()
+        return row is not None

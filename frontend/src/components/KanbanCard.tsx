@@ -14,11 +14,12 @@ const PRIORITY_COLORS: Record<Priority, string> = {
 
 type KanbanCardProps = {
   card: Card;
+  username: string;
   onDelete: (cardId: string) => void;
   onEdit: (cardId: string, updates: Partial<Card>) => void;
 };
 
-export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
+export const KanbanCard = ({ card, username, onDelete, onEdit }: KanbanCardProps) => {
   const [showEdit, setShowEdit] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: card.id });
@@ -105,6 +106,7 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
       {showEdit ? (
         <CardEditModal
           card={card}
+          username={username}
           onSave={(updates) => { onEdit(card.id, updates); setShowEdit(false); }}
           onClose={() => setShowEdit(false)}
         />

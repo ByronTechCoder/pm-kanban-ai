@@ -12,10 +12,13 @@ import requests
 from dotenv import load_dotenv
 
 from .db import (
+    add_comment,
     authenticate_user,
     board_belongs_to_user,
+    card_accessible_by_user,
     create_board,
     delete_board,
+    get_comments,
     get_or_create_board,
     init_db,
     list_boards,
@@ -165,6 +168,48 @@ def del_board(
     username = _require_user(user)
     if not delete_board(board_id, username):
         raise HTTPException(status_code=404, detail="board not found")
+
+
+# ---------------------------------------------------------------------------
+# Comment models & endpoints
+# ---------------------------------------------------------------------------
+
+class Comment(BaseModel):
+    id: str
+    card_id: str
+    author: str
+    text: str
+    created_at: str
+
+
+class AddCommentRequest(BaseModel):
+    text: str
+
+
+@app.get("/api/cards/{card_id}/comments", response_model=list[Comment])
+def get_card_comments(
+    card_id: str,
+    user: str | None = Query(default=None),
+) -> list[Comment]:
+    username = _require_user(user)
+    if not card_accessible_by_user(card_id, username):
+        raise HTTPException(status_code=404, detail="card not found")
+    return [Comment(**c) for c in get_comments(card_id)]
+
+
+@app.post("/api/cards/{card_id}/comments", response_model=Comment, status_code=201)
+def post_card_comment(
+    card_id: str,
+    payload: AddCommentRequest,
+    user: str | None = Query(default=None),
+) -> Comment:
+    username = _require_user(user)
+    if not card_accessible_by_user(card_id, username):
+        raise HTTPException(status_code=404, detail="card not found")
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    return Comment(**add_comment(card_id, username, text))
 
 
 # ---------------------------------------------------------------------------

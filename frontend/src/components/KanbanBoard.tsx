@@ -16,7 +16,8 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
-import { createId, initialData, moveCard, type BoardData, type Card } from "@/lib/kanban";
+import { createId, initialData, moveCard, moveColumn, type BoardData, type Card } from "@/lib/kanban";
+import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 
 type BoardSummary = {
   id: string;
@@ -50,6 +51,9 @@ export const KanbanBoard = ({
   const [isCreatingBoard, setIsCreatingBoard] = useState(false);
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterPriority, setFilterPriority] = useState<string>("all");
+  const [filterLabel, setFilterLabel] = useState<string>("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -66,6 +70,45 @@ export const KanbanBoard = ({
   };
 
   const cardsById = useMemo(() => board.cards, [board.cards]);
+
+  const filteredColumns = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return board.columns.map((col) => ({
+      ...col,
+      cardIds: col.cardIds.filter((id) => {
+        const card = board.cards[id];
+        if (!card) return false;
+        if (filterPriority !== "all" && card.priority !== filterPriority) return false;
+        if (filterLabel.trim()) {
+          const cardLabels = card.labels.split(",").map((l) => l.trim().toLowerCase());
+          if (!cardLabels.includes(filterLabel.trim().toLowerCase())) return false;
+        }
+        if (q) {
+          return (
+            card.title.toLowerCase().includes(q) ||
+            card.details.toLowerCase().includes(q) ||
+            card.labels.toLowerCase().includes(q)
+          );
+        }
+        return true;
+      }),
+    }));
+  }, [board.columns, board.cards, searchQuery, filterPriority, filterLabel]);
+
+  const isFiltering = searchQuery.trim() !== "" || filterPriority !== "all" || filterLabel.trim() !== "";
+
+  const allLabels = useMemo(() => {
+    const labelSet = new Set<string>();
+    Object.values(board.cards).forEach((card) => {
+      if (card.labels) {
+        card.labels.split(",").forEach((l) => {
+          const trimmed = l.trim();
+          if (trimmed) labelSet.add(trimmed);
+        });
+      }
+    });
+    return Array.from(labelSet).sort();
+  }, [board.cards]);
 
   // Load boards list
   const loadBoards = useCallback(async () => {
@@ -96,18 +139,35 @@ export const KanbanBoard = ({
     }
   }, [initialBoard]);
 
+  const columnIds = useMemo(() => board.columns.map((c) => c.id), [board.columns]);
+
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveCardId(event.active.id as string);
+    const id = event.active.id as string;
+    if (!columnIds.includes(id)) {
+      setActiveCardId(id);
+    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveCardId(null);
     if (!over || active.id === over.id) return;
-    setBoard((prev) => ({
-      ...prev,
-      columns: moveCard(prev.columns, active.id as string, over.id as string),
-    }));
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    if (columnIds.includes(activeId) && columnIds.includes(overId)) {
+      // Column reorder
+      setBoard((prev) => ({
+        ...prev,
+        columns: moveColumn(prev.columns, activeId, overId),
+      }));
+    } else {
+      // Card move
+      setBoard((prev) => ({
+        ...prev,
+        columns: moveCard(prev.columns, activeId, overId),
+      }));
+    }
   };
 
   const handleRenameColumn = (columnId: string, title: string) => {
@@ -318,15 +378,52 @@ export const KanbanBoard = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {board.columns.map((column) => (
-              <div
-                key={column.id}
-                className="hidden items-center gap-1.5 rounded-full border border-[var(--stroke)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--navy-dark)] xl:flex"
+            <div className="relative hidden sm:block">
+              <svg className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--gray-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search cards..."
+                aria-label="Search cards"
+                className="rounded-xl border border-[var(--stroke)] bg-white py-1.5 pl-9 pr-3 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)] w-48"
+              />
+            </div>
+            <select
+              value={filterPriority}
+              onChange={(e) => setFilterPriority(e.target.value)}
+              aria-label="Filter by priority"
+              className="rounded-xl border border-[var(--stroke)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+            >
+              <option value="all">All priorities</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="none">No priority</option>
+            </select>
+            {allLabels.length > 0 ? (
+              <select
+                value={filterLabel}
+                onChange={(e) => setFilterLabel(e.target.value)}
+                aria-label="Filter by label"
+                className="rounded-xl border border-[var(--stroke)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-yellow)]" />
-                {column.title}
-              </div>
-            ))}
+                <option value="">All labels</option>
+                {allLabels.map((label) => (
+                  <option key={label} value={label}>{label}</option>
+                ))}
+              </select>
+            ) : null}
+            {isFiltering ? (
+              <button
+                type="button"
+                onClick={() => { setSearchQuery(""); setFilterPriority("all"); setFilterLabel(""); }}
+                className="rounded-xl border border-[var(--stroke)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--secondary-purple)] transition hover:bg-[var(--surface)]"
+              >
+                Clear
+              </button>
+            ) : null}
           </div>
         </header>
 
@@ -345,18 +442,21 @@ export const KanbanBoard = ({
           onDragEnd={handleDragEnd}
         >
           <section className="flex gap-3 overflow-x-auto pb-2">
-            {board.columns.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                cards={column.cardIds.map((cardId) => board.cards[cardId]).filter(Boolean)}
-                onRename={handleRenameColumn}
-                onAddCard={handleAddCard}
-                onDeleteCard={handleDeleteCard}
-                onEditCard={handleEditCard}
-                onDeleteColumn={handleDeleteColumn}
-              />
-            ))}
+            <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
+              {filteredColumns.map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  cards={column.cardIds.map((cardId) => board.cards[cardId]).filter(Boolean)}
+                  username={username}
+                  onRename={handleRenameColumn}
+                  onAddCard={handleAddCard}
+                  onDeleteCard={handleDeleteCard}
+                  onEditCard={handleEditCard}
+                  onDeleteColumn={handleDeleteColumn}
+                />
+              ))}
+            </SortableContext>
             <div className="flex-shrink-0">
               {addingColumn ? (
                 <div className="flex w-[260px] flex-col gap-2 rounded-2xl border border-[var(--stroke)] bg-[var(--surface-strong)] p-3">

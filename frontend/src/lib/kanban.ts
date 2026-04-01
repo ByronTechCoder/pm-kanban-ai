@@ -190,6 +190,16 @@ export const moveCard = (
   });
 };
 
+export const moveColumn = (columns: Column[], activeId: string, overId: string): Column[] => {
+  const oldIndex = columns.findIndex((c) => c.id === activeId);
+  const newIndex = columns.findIndex((c) => c.id === overId);
+  if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return columns;
+  const next = [...columns];
+  next.splice(oldIndex, 1);
+  next.splice(newIndex, 0, columns[oldIndex]);
+  return next;
+};
+
 export const createId = (prefix: string) => {
   const randomPart = Math.random().toString(36).slice(2, 8);
   const timePart = Date.now().toString(36);

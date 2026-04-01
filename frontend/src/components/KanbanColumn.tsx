@@ -1,7 +1,8 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { Card, Column } from "@/lib/kanban";
 import { KanbanCard } from "@/components/KanbanCard";
 import { NewCardForm } from "@/components/NewCardForm";
@@ -9,6 +10,7 @@ import { NewCardForm } from "@/components/NewCardForm";
 type KanbanColumnProps = {
   column: Column;
   cards: Card[];
+  username: string;
   onRename: (columnId: string, title: string) => void;
   onAddCard: (columnId: string, title: string, details: string) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
@@ -19,26 +21,52 @@ type KanbanColumnProps = {
 export const KanbanColumn = ({
   column,
   cards,
+  username,
   onRename,
   onAddCard,
   onDeleteCard,
   onEditCard,
   onDeleteColumn,
 }: KanbanColumnProps) => {
-  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: column.id });
+  const {
+    setNodeRef: setSortableRef,
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: column.id });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const setNodeRef = (node: HTMLElement | null) => {
+    setDropRef(node);
+    setSortableRef(node);
+  };
 
   return (
     <section
       ref={setNodeRef}
+      style={style}
       className={clsx(
         "flex min-h-[460px] w-[260px] flex-shrink-0 flex-col rounded-2xl border border-[var(--stroke)] bg-[var(--surface-strong)] p-3 shadow-[var(--shadow)] transition",
-        isOver && "ring-2 ring-[var(--accent-yellow)]"
+        isOver && "ring-2 ring-[var(--accent-yellow)]",
+        isDragging && "opacity-50"
       )}
       data-testid={`column-${column.id}`}
     >
       <div className="mb-3 flex items-center gap-2 border-b border-[var(--stroke)] pb-3">
-        <div className="h-1.5 w-6 flex-shrink-0 rounded-full bg-[var(--accent-yellow)]" />
+        <div
+          className="h-1.5 w-6 flex-shrink-0 cursor-grab rounded-full bg-[var(--accent-yellow)] active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+          title="Drag to reorder"
+        />
         <input
           value={column.title}
           onChange={(event) => onRename(column.id, event.target.value)}
@@ -84,6 +112,7 @@ export const KanbanColumn = ({
             <KanbanCard
               key={card.id}
               card={card}
+              username={username}
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
               onEdit={(cardId, updates) => onEditCard(cardId, updates)}
             />

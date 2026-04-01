@@ -55,4 +55,31 @@ describe("KanbanBoard", () => {
 
     expect(within(column).queryByText("New card")).not.toBeInTheDocument();
   });
+
+  it("filters cards by search query", async () => {
+    render(<KanbanBoard />);
+    // All 8 initial cards visible
+    const initialCards = screen.getAllByTestId(/^card-/);
+    expect(initialCards.length).toBeGreaterThan(0);
+
+    const searchInput = screen.getByLabelText(/search cards/i);
+    await userEvent.type(searchInput, "Align roadmap");
+
+    // Only the matching card should be visible
+    expect(screen.getByText("Align roadmap themes")).toBeInTheDocument();
+    expect(screen.queryByText("Gather customer signals")).not.toBeInTheDocument();
+  });
+
+  it("clears filter with Clear button", async () => {
+    render(<KanbanBoard />);
+    const searchInput = screen.getByLabelText(/search cards/i);
+    await userEvent.type(searchInput, "Align");
+
+    expect(screen.getByRole("button", { name: /clear/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /clear/i }));
+
+    expect(searchInput).toHaveValue("");
+    // All cards back
+    expect(screen.getByText("Gather customer signals")).toBeInTheDocument();
+  });
 });
