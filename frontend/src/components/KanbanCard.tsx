@@ -18,9 +18,10 @@ type KanbanCardProps = {
   onDelete: (cardId: string) => void;
   onEdit: (cardId: string, updates: Partial<Card>) => void;
   onDuplicate: (cardId: string) => void;
+  onArchive: (cardId: string) => void;
 };
 
-export const KanbanCard = ({ card, username, onDelete, onEdit, onDuplicate }: KanbanCardProps) => {
+export const KanbanCard = ({ card, username, onDelete, onEdit, onDuplicate, onArchive }: KanbanCardProps) => {
   const [showEdit, setShowEdit] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: card.id });
@@ -72,6 +73,17 @@ export const KanbanCard = ({ card, username, onDelete, onEdit, onDuplicate }: Ka
           >
             <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onArchive(card.id); }}
+            className="flex h-6 w-6 items-center justify-center rounded-full text-[var(--gray-text)] transition hover:bg-[var(--surface)] hover:text-amber-500"
+            aria-label={`Archive ${card.title}`}
+            title="Archive card"
+          >
+            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
             </svg>
           </button>
           <button

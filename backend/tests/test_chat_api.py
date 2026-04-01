@@ -42,7 +42,7 @@ def test_chat_live_connectivity_2_plus_2(tmp_path: Path) -> None:
 
 
 def test_chat_applies_board_updates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     client, main_module = _get_client(tmp_path)
 
     current_board = client.get("/api/board", params={"user": "user"}).json()
@@ -93,7 +93,7 @@ def test_chat_rejects_invalid_structured_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    os.environ["OPENROUTER_API_KEY"] = "test-key"
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     client, main_module = _get_client(tmp_path)
 
     class FakeResponse:

@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from .db import (
     add_checklist_item,
     add_comment,
+    archive_card,
     authenticate_user,
     board_belongs_to_user,
     card_accessible_by_user,
@@ -21,15 +22,19 @@ from .db import (
     delete_board,
     delete_checklist_item,
     duplicate_card,
+    get_activity,
+    get_archived_cards,
     get_checklist,
     get_comments,
     get_or_create_board,
     init_db,
     list_boards,
     load_board,
+    log_activity,
     register_user,
     rename_board,
     replace_board,
+    restore_card,
     update_checklist_item,
 )
 
@@ -336,6 +341,120 @@ def del_checklist_item(
 
 
 # ---------------------------------------------------------------------------
+# Card archive / restore endpoints
+# ---------------------------------------------------------------------------
+
+class ArchivedCard(BaseModel):
+    id: str
+    title: str
+    details: str
+    priority: str = "none"
+    dueDate: str | None = None
+    labels: str = ""
+    columnTitle: str
+    archivedAt: str
+
+
+@app.post("/api/cards/{card_id}/archive", status_code=204)
+def post_archive_card(
+    card_id: str,
+    user: str | None = Query(default=None),
+    board_id: str | None = Query(default=None),
+) -> None:
+    username = _require_user(user)
+    if not card_accessible_by_user(card_id, username):
+        raise HTTPException(status_code=404, detail="card not found")
+    if not archive_card(card_id):
+        raise HTTPException(status_code=404, detail="card not found")
+    if board_id:
+        log_activity(board_id, username, "archive", "card", f"Archived card", entity_id=card_id)
+
+
+@app.post("/api/cards/{card_id}/restore", response_model=Card, status_code=200)
+def post_restore_card(
+    card_id: str,
+    user: str | None = Query(default=None),
+    board_id: str | None = Query(default=None),
+) -> Card:
+    username = _require_user(user)
+    if not card_accessible_by_user(card_id, username):
+        raise HTTPException(status_code=404, detail="card not found")
+    if not restore_card(card_id):
+        raise HTTPException(status_code=404, detail="card not found")
+    if board_id:
+        log_activity(board_id, username, "restore", "card", f"Restored card", entity_id=card_id)
+    # Return the card data
+    from .db import get_connection
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id, title, details, priority, due_date, labels FROM cards WHERE id = ?",
+            (card_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="card not found")
+    return Card(
+        id=row["id"], title=row["title"], details=row["details"],
+        priority=row["priority"] or "none", dueDate=row["due_date"],
+        labels=row["labels"] or "",
+    )
+
+
+@app.get("/api/boards/{board_id}/archive", response_model=list[ArchivedCard])
+def get_board_archive(
+    board_id: str,
+    user: str | None = Query(default=None),
+) -> list[ArchivedCard]:
+    username = _require_user(user)
+    _require_board_access(board_id, username)
+    return [ArchivedCard(**c) for c in get_archived_cards(board_id)]
+
+
+# ---------------------------------------------------------------------------
+# Activity log endpoints
+# ---------------------------------------------------------------------------
+
+class ActivityEntry(BaseModel):
+    id: str
+    board_id: str
+    username: str
+    action: str
+    entity_type: str
+    entity_id: str | None = None
+    description: str
+    created_at: str
+
+
+@app.get("/api/boards/{board_id}/activity", response_model=list[ActivityEntry])
+def get_board_activity(
+    board_id: str,
+    user: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[ActivityEntry]:
+    username = _require_user(user)
+    _require_board_access(board_id, username)
+    return [ActivityEntry(**e) for e in get_activity(board_id, limit)]
+
+
+@app.post("/api/boards/{board_id}/activity", response_model=ActivityEntry, status_code=201)
+def post_board_activity(
+    board_id: str,
+    payload: dict,
+    user: str | None = Query(default=None),
+) -> ActivityEntry:
+    username = _require_user(user)
+    _require_board_access(board_id, username)
+    action = str(payload.get("action", "")).strip()
+    entity_type = str(payload.get("entity_type", "board")).strip()
+    description = str(payload.get("description", "")).strip()
+    entity_id = payload.get("entity_id")
+    if not action or not description:
+        raise HTTPException(status_code=400, detail="action and description are required")
+    log_activity(board_id, username, action, entity_type, description, entity_id)
+    entries = get_activity(board_id, 1)
+    return ActivityEntry(**entries[0])
+
+
+# ---------------------------------------------------------------------------
 # Board data endpoints
 # ---------------------------------------------------------------------------
 
@@ -409,6 +528,7 @@ def put_board(
     else:
         bid = get_or_create_board(username)
     replace_board(bid, payload.model_dump())
+    log_activity(bid, username, "update", "board", "Updated board")
     return BoardData(**load_board(bid))
 
 

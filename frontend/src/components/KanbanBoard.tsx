@@ -59,6 +59,11 @@ export const KanbanBoard = ({
     overdue_cards: number;
     high_priority_cards: number;
   } | null>(null);
+  const [showArchiveView, setShowArchiveView] = useState(false);
+  const [archivedCards, setArchivedCards] = useState<Array<{
+    id: string; title: string; details: string; priority: string;
+    dueDate: string | null; labels: string; columnTitle: string; archivedAt: string;
+  }>>([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -302,6 +307,62 @@ export const KanbanBoard = ({
     }
   };
 
+  const handleToggleArchiveView = async () => {
+    if (!showArchiveView && activeBoardId) {
+      try {
+        const resp = await fetch(
+          `/api/boards/${activeBoardId}/archive?user=${encodeURIComponent(username)}`
+        );
+        if (resp.ok) setArchivedCards(await resp.json());
+      } catch { /* ignore */ }
+    }
+    setShowArchiveView((v) => !v);
+  };
+
+  const handleRestoreCard = async (cardId: string) => {
+    try {
+      const resp = await fetch(
+        `/api/cards/${cardId}/restore?user=${encodeURIComponent(username)}&board_id=${encodeURIComponent(activeBoardId ?? "")}`,
+        { method: "POST" }
+      );
+      if (resp.ok) {
+        setArchivedCards((prev) => prev.filter((c) => c.id !== cardId));
+        // Reload board to show the restored card
+        if (activeBoardId) {
+          const boardResp = await fetch(
+            `/api/board?user=${encodeURIComponent(username)}&board_id=${encodeURIComponent(activeBoardId)}`
+          );
+          if (boardResp.ok) setBoard(await boardResp.json() as typeof board);
+        }
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleArchiveCard = async (cardId: string) => {
+    try {
+      const resp = await fetch(
+        `/api/cards/${cardId}/archive?user=${encodeURIComponent(username)}&board_id=${encodeURIComponent(activeBoardId ?? "")}`,
+        { method: "POST" }
+      );
+      if (resp.ok) {
+        setBoard((prev) => {
+          const nextCards = { ...prev.cards };
+          delete nextCards[cardId];
+          return {
+            ...prev,
+            columns: prev.columns.map((col) => ({
+              ...col,
+              cardIds: col.cardIds.filter((id) => id !== cardId),
+            })),
+            cards: nextCards,
+          };
+        });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const handleSetWipLimit = (columnId: string, limit: number | null) => {
     setBoard((prev) => ({
       ...prev,
@@ -514,7 +575,14 @@ export const KanbanBoard = ({
                 {boardStats.high_priority_cards} high priority
               </span>
             ) : null}
-            <div className="ml-auto">
+            <div className="ml-auto flex gap-2">
+              <button
+                type="button"
+                onClick={() => void handleToggleArchiveView()}
+                className="rounded-xl border border-[var(--stroke)] px-3 py-1.5 font-semibold text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+              >
+                Archive
+              </button>
               <a
                 href={`/api/boards/${activeBoardId}/export?user=${encodeURIComponent(username)}`}
                 download={`board-${activeBoardId}.json`}
@@ -554,6 +622,7 @@ export const KanbanBoard = ({
                   onEditCard={handleEditCard}
                   onDeleteColumn={handleDeleteColumn}
                   onDuplicateCard={handleDuplicateCard}
+                  onArchiveCard={handleArchiveCard}
                   onSetWipLimit={handleSetWipLimit}
                 />
               ))}
@@ -611,6 +680,58 @@ export const KanbanBoard = ({
             ) : null}
           </DragOverlay>
         </DndContext>
+
+        {/* Archive panel */}
+        {showArchiveView ? (
+          <div className="mt-6 rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-display text-base font-semibold text-[var(--navy-dark)]">
+                Archived Cards
+                <span className="ml-2 rounded-full bg-[var(--surface-strong)] px-2 py-0.5 text-xs font-normal text-[var(--gray-text)]">
+                  {archivedCards.length}
+                </span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowArchiveView(false)}
+                className="rounded-full p-1.5 text-[var(--gray-text)] transition hover:bg-[var(--surface-strong)]"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {archivedCards.length === 0 ? (
+              <p className="text-sm text-[var(--gray-text)]">No archived cards.</p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {archivedCards.map((card) => (
+                  <div
+                    key={card.id}
+                    className="flex flex-col gap-2 rounded-xl border border-[var(--stroke)] bg-white p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-medium text-[var(--navy-dark)]">{card.title}</span>
+                      <span className="flex-shrink-0 rounded-full bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--gray-text)]">
+                        {card.columnTitle}
+                      </span>
+                    </div>
+                    {card.details ? (
+                      <p className="line-clamp-2 text-xs text-[var(--gray-text)]">{card.details}</p>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => void handleRestoreCard(card.id)}
+                      className="mt-auto self-start rounded-full border border-[var(--stroke)] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--gray-text)] transition hover:border-[var(--primary-blue)] hover:text-[var(--primary-blue)]"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
       </main>
     </div>
   );

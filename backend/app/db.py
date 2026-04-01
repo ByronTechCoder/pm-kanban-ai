@@ -67,6 +67,7 @@ def init_db() -> None:
                 due_date TEXT,
                 labels TEXT NOT NULL DEFAULT '',
                 order_index INTEGER NOT NULL,
+                archived INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(column_id) REFERENCES columns(id) ON DELETE CASCADE
@@ -89,6 +90,19 @@ def init_db() -> None:
                 FOREIGN KEY(card_id) REFERENCES cards(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_checklist_card_id ON checklist_items(card_id);
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id TEXT PRIMARY KEY,
+                board_id TEXT NOT NULL,
+                username TEXT NOT NULL,
+                action TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT,
+                description TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(board_id) REFERENCES boards(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_activity_board_id ON activity_log(board_id);
+            CREATE INDEX IF NOT EXISTS idx_activity_created_at ON activity_log(created_at);
             CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
             CREATE INDEX IF NOT EXISTS idx_boards_user_id ON boards(user_id);
             CREATE INDEX IF NOT EXISTS idx_columns_board_id ON columns(board_id);
@@ -131,6 +145,8 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE cards ADD COLUMN labels TEXT NOT NULL DEFAULT ''"
             )
+        if "archived" not in card_cols:
+            conn.execute("ALTER TABLE cards ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
         conn.commit()
 
 
@@ -338,7 +354,7 @@ def load_board(board_id: str) -> dict[str, Any]:
 
         for column in columns_rows:
             card_rows = conn.execute(
-                "SELECT id, title, details, priority, due_date, labels FROM cards WHERE column_id = ? ORDER BY order_index",
+                "SELECT id, title, details, priority, due_date, labels FROM cards WHERE column_id = ? AND archived = 0 ORDER BY order_index",
                 (column["id"],),
             ).fetchall()
             card_ids = []
@@ -559,3 +575,89 @@ def delete_checklist_item(item_id: str) -> bool:
         cur = conn.execute("DELETE FROM checklist_items WHERE id = ?", (item_id,))
         conn.commit()
         return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Activity log
+# ---------------------------------------------------------------------------
+
+def log_activity(
+    board_id: str,
+    username: str,
+    action: str,
+    entity_type: str,
+    description: str,
+    entity_id: str | None = None,
+) -> None:
+    """Record an activity event."""
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO activity_log (id, board_id, username, action, entity_type, entity_id, description, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), board_id, username, action, entity_type, entity_id, description, _utc_now()),
+        )
+        conn.commit()
+
+
+def get_activity(board_id: str, limit: int = 50) -> list[dict[str, Any]]:
+    """Return recent activity for a board, newest first."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, board_id, username, action, entity_type, entity_id, description, created_at FROM activity_log WHERE board_id = ? ORDER BY created_at DESC LIMIT ?",
+            (board_id, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Card archive / restore
+# ---------------------------------------------------------------------------
+
+def archive_card(card_id: str) -> bool:
+    """Soft-delete a card by marking it archived. Returns True if found."""
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE cards SET archived = 1, updated_at = ? WHERE id = ?",
+            (_utc_now(), card_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def restore_card(card_id: str) -> bool:
+    """Restore an archived card. Returns True if found."""
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE cards SET archived = 0, updated_at = ? WHERE id = ?",
+            (_utc_now(), card_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def get_archived_cards(board_id: str) -> list[dict[str, Any]]:
+    """Return all archived cards for a board."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT cards.id, cards.title, cards.details, cards.priority, cards.due_date, cards.labels,
+                   columns.title as column_title, cards.updated_at
+            FROM cards
+            JOIN columns ON cards.column_id = columns.id
+            WHERE columns.board_id = ? AND cards.archived = 1
+            ORDER BY cards.updated_at DESC
+            """,
+            (board_id,),
+        ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "title": row["title"],
+                "details": row["details"],
+                "priority": row["priority"] or "none",
+                "dueDate": row["due_date"],
+                "labels": row["labels"] or "",
+                "columnTitle": row["column_title"],
+                "archivedAt": row["updated_at"],
+            }
+            for row in rows
+        ]
