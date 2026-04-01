@@ -11,7 +11,19 @@ from fastapi.staticfiles import StaticFiles
 import requests
 from dotenv import load_dotenv
 
-from .db import get_or_create_board, init_db, load_board, replace_board
+from .db import (
+    authenticate_user,
+    board_belongs_to_user,
+    create_board,
+    delete_board,
+    get_or_create_board,
+    init_db,
+    list_boards,
+    load_board,
+    register_user,
+    rename_board,
+    replace_board,
+)
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
@@ -38,10 +50,134 @@ def api_hello() -> dict[str, str]:
     return {"message": "Hello from FastAPI"}
 
 
+# ---------------------------------------------------------------------------
+# Auth models & endpoints
+# ---------------------------------------------------------------------------
+
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    username: str
+    message: str
+
+
+@app.post("/api/auth/register", response_model=AuthResponse)
+def api_register(payload: AuthRequest) -> AuthResponse:
+    username = payload.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="username is required")
+    if len(username) < 2:
+        raise HTTPException(status_code=400, detail="username must be at least 2 characters")
+    if not payload.password or len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="password must be at least 6 characters")
+    try:
+        register_user(username, payload.password)
+    except Exception:
+        raise HTTPException(status_code=409, detail="username already taken")
+    return AuthResponse(username=username, message="registered")
+
+
+@app.post("/api/auth/login", response_model=AuthResponse)
+def api_login(payload: AuthRequest) -> AuthResponse:
+    user_id = authenticate_user(payload.username.strip(), payload.password)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    return AuthResponse(username=payload.username.strip(), message="authenticated")
+
+
+# ---------------------------------------------------------------------------
+# Board management models & endpoints
+# ---------------------------------------------------------------------------
+
+class BoardSummary(BaseModel):
+    id: str
+    title: str
+    created_at: str
+    updated_at: str
+
+
+class CreateBoardRequest(BaseModel):
+    title: str
+
+
+class RenameBoardRequest(BaseModel):
+    title: str
+
+
+def _require_user(username: str | None) -> str:
+    if not username:
+        raise HTTPException(status_code=400, detail="user is required")
+    return username
+
+
+def _require_board_access(board_id: str, username: str) -> None:
+    if not board_belongs_to_user(board_id, username):
+        raise HTTPException(status_code=404, detail="board not found")
+
+
+@app.get("/api/boards", response_model=list[BoardSummary])
+def get_boards(user: str | None = Query(default=None)) -> list[BoardSummary]:
+    username = _require_user(user)
+    boards = list_boards(username)
+    return [BoardSummary(**b) for b in boards]
+
+
+@app.post("/api/boards", response_model=BoardSummary, status_code=201)
+def post_boards(
+    payload: CreateBoardRequest,
+    user: str | None = Query(default=None),
+) -> BoardSummary:
+    username = _require_user(user)
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+    board_id = create_board(username, title)
+    boards = list_boards(username)
+    board = next(b for b in boards if b["id"] == board_id)
+    return BoardSummary(**board)
+
+
+@app.patch("/api/boards/{board_id}", response_model=BoardSummary)
+def patch_board(
+    board_id: str,
+    payload: RenameBoardRequest,
+    user: str | None = Query(default=None),
+) -> BoardSummary:
+    username = _require_user(user)
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+    if not rename_board(board_id, username, title):
+        raise HTTPException(status_code=404, detail="board not found")
+    boards = list_boards(username)
+    board = next(b for b in boards if b["id"] == board_id)
+    return BoardSummary(**board)
+
+
+@app.delete("/api/boards/{board_id}", status_code=204)
+def del_board(
+    board_id: str,
+    user: str | None = Query(default=None),
+) -> None:
+    username = _require_user(user)
+    if not delete_board(board_id, username):
+        raise HTTPException(status_code=404, detail="board not found")
+
+
+# ---------------------------------------------------------------------------
+# Board data models & endpoints
+# ---------------------------------------------------------------------------
+
 class Card(BaseModel):
     id: str
     title: str
     details: str
+    priority: str = "none"
+    dueDate: str | None = None
+    labels: str = ""
 
 
 class Column(BaseModel):
@@ -86,12 +222,6 @@ class StructuredAssistantResponse(BaseModel):
     boardUpdates: BoardData | None = None
 
 
-def _require_user(username: str | None) -> str:
-    if not username:
-        raise HTTPException(status_code=400, detail="user is required")
-    return username
-
-
 def _validate_board_integrity(board: BoardData) -> None:
     card_ids = set(board.cards.keys())
     for col in board.columns:
@@ -104,20 +234,39 @@ def _validate_board_integrity(board: BoardData) -> None:
 
 
 @app.get("/api/board", response_model=BoardData)
-def get_board(user: str | None = Query(default=None)) -> BoardData:
+def get_board(
+    user: str | None = Query(default=None),
+    board_id: str | None = Query(default=None),
+) -> BoardData:
     username = _require_user(user)
-    board_id = get_or_create_board(username)
-    return BoardData(**load_board(board_id))
+    if board_id:
+        _require_board_access(board_id, username)
+        bid = board_id
+    else:
+        bid = get_or_create_board(username)
+    return BoardData(**load_board(bid))
 
 
 @app.put("/api/board", response_model=BoardData)
-def put_board(payload: BoardData, user: str | None = Query(default=None)) -> BoardData:
+def put_board(
+    payload: BoardData,
+    user: str | None = Query(default=None),
+    board_id: str | None = Query(default=None),
+) -> BoardData:
     username = _require_user(user)
     _validate_board_integrity(payload)
-    board_id = get_or_create_board(username)
-    replace_board(board_id, payload.model_dump())
-    return BoardData(**load_board(board_id))
+    if board_id:
+        _require_board_access(board_id, username)
+        bid = board_id
+    else:
+        bid = get_or_create_board(username)
+    replace_board(bid, payload.model_dump())
+    return BoardData(**load_board(bid))
 
+
+# ---------------------------------------------------------------------------
+# Chat endpoint
+# ---------------------------------------------------------------------------
 
 def _extract_assistant_text(data: dict) -> str:
     choices = data.get("choices", [])
@@ -155,7 +304,11 @@ def _build_chat_messages(
         "\n"
         "The board object format is:\n"
         '{"columns": [{"id": "col1", "title": "To Do", "cardIds": ["card1"]}], '
-        '"cards": {"card1": {"id": "card1", "title": "Task", "details": ""}}}\n'
+        '"cards": {"card1": {"id": "card1", "title": "Task", "details": "", "priority": "none", "dueDate": null, "labels": ""}}}\n'
+        "\n"
+        "Card priority values: none, low, medium, high\n"
+        "Card dueDate format: YYYY-MM-DD or null\n"
+        "Card labels: comma-separated string\n"
         "\n"
         "When returning boardUpdates, include ALL columns and ALL cards (not just changed ones).\n"
         "If no board changes are needed, set boardUpdates to null."
@@ -197,14 +350,22 @@ def _parse_structured_assistant_response(raw_text: str) -> StructuredAssistantRe
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-def api_chat(payload: ChatRequest, user: str | None = Query(default=None)) -> ChatResponse:
+def api_chat(
+    payload: ChatRequest,
+    user: str | None = Query(default=None),
+    board_id: str | None = Query(default=None),
+) -> ChatResponse:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is not set")
 
     username = _require_user(user)
-    board_id = get_or_create_board(username)
-    current_board = BoardData(**load_board(board_id))
+    if board_id:
+        _require_board_access(board_id, username)
+        bid = board_id
+    else:
+        bid = get_or_create_board(username)
+    current_board = BoardData(**load_board(bid))
 
     messages = _build_chat_messages(
         board=current_board,
@@ -251,10 +412,10 @@ def api_chat(payload: ChatRequest, user: str | None = Query(default=None)) -> Ch
 
     if structured_response.boardUpdates is not None:
         _validate_board_integrity(structured_response.boardUpdates)
-        replace_board(board_id, structured_response.boardUpdates.model_dump())
+        replace_board(bid, structured_response.boardUpdates.model_dump())
 
     board_updates_applied = structured_response.boardUpdates is not None
-    latest_board = BoardData(**load_board(board_id))
+    latest_board = BoardData(**load_board(bid))
 
     return ChatResponse(
         reply=structured_response.responseText,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -8,7 +8,6 @@ import {
   closestCenter,
   useSensor,
   useSensors,
-  closestCorners,
   pointerWithin,
   rectIntersection,
   type CollisionDetection,
@@ -17,21 +16,40 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
-import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
+import { createId, initialData, moveCard, type BoardData, type Card } from "@/lib/kanban";
+
+type BoardSummary = {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+};
 
 type KanbanBoardProps = {
   initialBoard?: BoardData;
+  username?: string;
+  activeBoardId?: string | null;
   onBoardChange?: (board: BoardData) => void;
+  onBoardSwitch?: (boardId: string) => void;
 };
 
 export const KanbanBoard = ({
   initialBoard,
+  username = "",
+  activeBoardId = null,
   onBoardChange,
+  onBoardSwitch = () => {},
 }: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData>(
     () => initialBoard ?? initialData
   );
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [boards, setBoards] = useState<BoardSummary[]>([]);
+  const [showBoardMenu, setShowBoardMenu] = useState(false);
+  const [newBoardTitle, setNewBoardTitle] = useState("");
+  const [isCreatingBoard, setIsCreatingBoard] = useState(false);
+  const [addingColumn, setAddingColumn] = useState(false);
+  const [newColumnTitle, setNewColumnTitle] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -41,19 +59,30 @@ export const KanbanBoard = ({
 
   const collisionDetection: CollisionDetection = (args) => {
     const pointerHits = pointerWithin(args);
-    if (pointerHits.length > 0) {
-      return pointerHits;
-    }
-
+    if (pointerHits.length > 0) return pointerHits;
     const rectHits = rectIntersection(args);
-    if (rectHits.length > 0) {
-      return rectHits;
-    }
-
+    if (rectHits.length > 0) return rectHits;
     return closestCenter(args);
   };
 
   const cardsById = useMemo(() => board.cards, [board.cards]);
+
+  // Load boards list
+  const loadBoards = useCallback(async () => {
+    try {
+      const resp = await fetch(`/api/boards?user=${encodeURIComponent(username)}`);
+      if (resp.ok) {
+        const data = (await resp.json()) as BoardSummary[];
+        setBoards(data);
+      }
+    } catch {
+      // ignore
+    }
+  }, [username]);
+
+  useEffect(() => {
+    void loadBoards();
+  }, [loadBoards]);
 
   useEffect(() => {
     if (onBoardChange) {
@@ -74,11 +103,7 @@ export const KanbanBoard = ({
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveCardId(null);
-
-    if (!over || active.id === over.id) {
-      return;
-    }
-
+    if (!over || active.id === over.id) return;
     setBoard((prev) => ({
       ...prev,
       columns: moveCard(prev.columns, active.id as string, over.id as string),
@@ -100,7 +125,7 @@ export const KanbanBoard = ({
       ...prev,
       cards: {
         ...prev.cards,
-        [id]: { id, title, details: details || "No details yet." },
+        [id]: { id, title, details: details || "No details yet.", priority: "none", dueDate: null, labels: "" },
       },
       columns: prev.columns.map((column) =>
         column.id === columnId
@@ -111,25 +136,91 @@ export const KanbanBoard = ({
   };
 
   const handleDeleteCard = (columnId: string, cardId: string) => {
+    setBoard((prev) => ({
+      ...prev,
+      cards: Object.fromEntries(
+        Object.entries(prev.cards).filter(([id]) => id !== cardId)
+      ),
+      columns: prev.columns.map((column) =>
+        column.id === columnId
+          ? { ...column, cardIds: column.cardIds.filter((id) => id !== cardId) }
+          : column
+      ),
+    }));
+  };
+
+  const handleEditCard = (cardId: string, updates: Partial<Card>) => {
+    setBoard((prev) => ({
+      ...prev,
+      cards: {
+        ...prev.cards,
+        [cardId]: { ...prev.cards[cardId], ...updates },
+      },
+    }));
+  };
+
+  const handleAddColumn = async () => {
+    const title = newColumnTitle.trim();
+    if (!title) return;
+    const id = createId("col");
+    setBoard((prev) => ({
+      ...prev,
+      columns: [...prev.columns, { id, title, cardIds: [] }],
+    }));
+    setNewColumnTitle("");
+    setAddingColumn(false);
+  };
+
+  const handleDeleteColumn = (columnId: string) => {
     setBoard((prev) => {
+      const column = prev.columns.find((c) => c.id === columnId);
+      if (!column) return prev;
+      const nextCards = { ...prev.cards };
+      column.cardIds.forEach((id) => delete nextCards[id]);
       return {
         ...prev,
-        cards: Object.fromEntries(
-          Object.entries(prev.cards).filter(([id]) => id !== cardId)
-        ),
-        columns: prev.columns.map((column) =>
-          column.id === columnId
-            ? {
-                ...column,
-                cardIds: column.cardIds.filter((id) => id !== cardId),
-              }
-            : column
-        ),
+        cards: nextCards,
+        columns: prev.columns.filter((c) => c.id !== columnId),
       };
     });
   };
 
+  const handleCreateBoard = async () => {
+    const title = newBoardTitle.trim();
+    if (!title) return;
+    setIsCreatingBoard(true);
+    try {
+      const resp = await fetch(`/api/boards?user=${encodeURIComponent(username)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (resp.ok) {
+        const newBoard = (await resp.json()) as BoardSummary;
+        setNewBoardTitle("");
+        setShowBoardMenu(false);
+        await loadBoards();
+        onBoardSwitch(newBoard.id);
+      }
+    } finally {
+      setIsCreatingBoard(false);
+    }
+  };
+
+  const handleDeleteBoard = async (boardId: string) => {
+    if (boards.length <= 1) return; // Don't delete last board
+    await fetch(`/api/boards/${boardId}?user=${encodeURIComponent(username)}`, {
+      method: "DELETE",
+    });
+    await loadBoards();
+    if (activeBoardId === boardId) {
+      const remaining = boards.find((b) => b.id !== boardId);
+      if (remaining) onBoardSwitch(remaining.id);
+    }
+  };
+
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
+  const currentBoardTitle = boards.find((b) => b.id === activeBoardId)?.title ?? "My Board";
 
   return (
     <div className="relative overflow-hidden">
@@ -139,13 +230,91 @@ export const KanbanBoard = ({
       <main className="relative mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-4 pb-12 pt-8">
         <header className="flex items-center justify-between gap-4 rounded-2xl border border-[var(--stroke)] bg-white/80 px-6 py-4 shadow-[var(--shadow)] backdrop-blur">
           <div className="flex items-center gap-4">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
-                Single Board
-              </p>
-              <h1 className="mt-0.5 font-display text-xl font-semibold text-[var(--navy-dark)]">
-                Kanban Studio
-              </h1>
+            <h1 className="hidden font-display text-base font-semibold text-[var(--navy-dark)] lg:block">
+              Kanban Studio
+            </h1>
+            <div className="hidden h-4 w-px bg-[var(--stroke)] lg:block" />
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowBoardMenu((v) => !v)}
+                className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-left transition hover:bg-[var(--surface)]"
+              >
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
+                    Board
+                  </p>
+                  <h1 className="mt-0.5 font-display text-xl font-semibold text-[var(--navy-dark)]">
+                    {currentBoardTitle}
+                  </h1>
+                </div>
+                <svg className="h-4 w-4 text-[var(--gray-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {showBoardMenu ? (
+                <div className="absolute left-0 top-full z-50 mt-2 w-72 rounded-2xl border border-[var(--stroke)] bg-white shadow-[var(--shadow)]">
+                  <div className="p-3">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
+                      Your Boards
+                    </p>
+                    <ul className="space-y-1">
+                      {boards.map((b) => (
+                        <li key={b.id} className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowBoardMenu(false);
+                              onBoardSwitch(b.id);
+                            }}
+                            className={`flex-1 rounded-xl px-3 py-2 text-left text-sm font-medium transition hover:bg-[var(--surface)] ${
+                              b.id === activeBoardId
+                                ? "bg-[var(--primary-blue)]/10 text-[var(--primary-blue)]"
+                                : "text-[var(--navy-dark)]"
+                            }`}
+                          >
+                            {b.title}
+                          </button>
+                          {boards.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteBoard(b.id)}
+                              className="rounded-lg p-1.5 text-[var(--gray-text)] transition hover:text-red-500"
+                              title="Delete board"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-3 border-t border-[var(--stroke)] pt-3">
+                      <div className="flex gap-2">
+                        <input
+                          value={newBoardTitle}
+                          onChange={(e) => setNewBoardTitle(e.target.value)}
+                          placeholder="New board name..."
+                          className="min-w-0 flex-1 rounded-xl border border-[var(--stroke)] px-3 py-1.5 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void handleCreateBoard();
+                          }}
+                        />
+                        <button
+                          type="button"
+                          disabled={isCreatingBoard || !newBoardTitle.trim()}
+                          onClick={() => void handleCreateBoard()}
+                          className="rounded-xl bg-[var(--primary-blue)] px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-50"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -161,23 +330,77 @@ export const KanbanBoard = ({
           </div>
         </header>
 
+        {/* Click outside to close board menu */}
+        {showBoardMenu ? (
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setShowBoardMenu(false)}
+          />
+        ) : null}
+
         <DndContext
           sensors={sensors}
           collisionDetection={collisionDetection}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <section className="grid gap-3 lg:grid-cols-5">
+          <section className="flex gap-3 overflow-x-auto pb-2">
             {board.columns.map((column) => (
               <KanbanColumn
                 key={column.id}
                 column={column}
-                cards={column.cardIds.map((cardId) => board.cards[cardId])}
+                cards={column.cardIds.map((cardId) => board.cards[cardId]).filter(Boolean)}
                 onRename={handleRenameColumn}
                 onAddCard={handleAddCard}
                 onDeleteCard={handleDeleteCard}
+                onEditCard={handleEditCard}
+                onDeleteColumn={handleDeleteColumn}
               />
             ))}
+            <div className="flex-shrink-0">
+              {addingColumn ? (
+                <div className="flex w-[260px] flex-col gap-2 rounded-2xl border border-[var(--stroke)] bg-[var(--surface-strong)] p-3">
+                  <input
+                    autoFocus
+                    value={newColumnTitle}
+                    onChange={(e) => setNewColumnTitle(e.target.value)}
+                    placeholder="Column name..."
+                    className="rounded-xl border border-[var(--stroke)] px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void handleAddColumn();
+                      if (e.key === "Escape") { setAddingColumn(false); setNewColumnTitle(""); }
+                    }}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleAddColumn()}
+                      className="flex-1 rounded-xl bg-[var(--primary-blue)] px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-110"
+                    >
+                      Add Column
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setAddingColumn(false); setNewColumnTitle(""); }}
+                      className="rounded-xl border border-[var(--stroke)] px-3 py-1.5 text-xs font-semibold text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAddingColumn(true)}
+                  className="flex h-12 w-[260px] items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--stroke)] text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)] transition hover:border-[var(--primary-blue)] hover:text-[var(--primary-blue)]"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Column
+                </button>
+              )}
+            </div>
           </section>
           <DragOverlay>
             {activeCard ? (

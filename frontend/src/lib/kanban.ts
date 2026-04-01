@@ -1,7 +1,12 @@
+export type Priority = "none" | "low" | "medium" | "high";
+
 export type Card = {
   id: string;
   title: string;
   details: string;
+  priority: Priority;
+  dueDate: string | null;
+  labels: string;
 };
 
 export type Column = {
@@ -32,41 +37,65 @@ export const initialData: BoardData = {
       id: "card-1",
       title: "Align roadmap themes",
       details: "Draft quarterly themes with impact statements and metrics.",
+      priority: "none",
+      dueDate: null,
+      labels: "",
     },
     "card-2": {
       id: "card-2",
       title: "Gather customer signals",
       details: "Review support tags, sales notes, and churn feedback.",
+      priority: "none",
+      dueDate: null,
+      labels: "",
     },
     "card-3": {
       id: "card-3",
       title: "Prototype analytics view",
       details: "Sketch initial dashboard layout and key drill-downs.",
+      priority: "none",
+      dueDate: null,
+      labels: "",
     },
     "card-4": {
       id: "card-4",
       title: "Refine status language",
       details: "Standardize column labels and tone across the board.",
+      priority: "none",
+      dueDate: null,
+      labels: "",
     },
     "card-5": {
       id: "card-5",
       title: "Design card layout",
       details: "Add hierarchy and spacing for scanning dense lists.",
+      priority: "none",
+      dueDate: null,
+      labels: "",
     },
     "card-6": {
       id: "card-6",
       title: "QA micro-interactions",
       details: "Verify hover, focus, and loading states.",
+      priority: "none",
+      dueDate: null,
+      labels: "",
     },
     "card-7": {
       id: "card-7",
       title: "Ship marketing page",
       details: "Final copy approved and asset pack delivered.",
+      priority: "none",
+      dueDate: null,
+      labels: "",
     },
     "card-8": {
       id: "card-8",
       title: "Close onboarding sprint",
       details: "Document release notes and share internally.",
+      priority: "none",
+      dueDate: null,
+      labels: "",
     },
   },
 };

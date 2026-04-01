@@ -4,6 +4,8 @@ import { vi } from "vitest";
 import { AuthGate } from "@/components/AuthGate";
 import { initialData } from "@/lib/kanban";
 
+const MOCK_BOARDS = [{ id: "board-1", title: "My Board", created_at: "2026-01-01", updated_at: "2026-01-01" }];
+
 describe("AuthGate", () => {
   beforeEach(() => {
     const store = new Map<string, string>();
@@ -32,17 +34,27 @@ describe("AuthGate", () => {
     vi.unstubAllGlobals();
   });
 
-  const mockApi = () => {
+  const mockApi = (loginOk = true) => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockImplementation((input: RequestInfo, init?: RequestInit) => {
-      if (typeof input === "string" && input.startsWith("/api/board")) {
+      const url = typeof input === "string" ? input : "";
+      if (url.startsWith("/api/auth/login") || url.startsWith("/api/auth/register")) {
+        if (loginOk) {
+          return Promise.resolve({ ok: true, json: async () => ({ username: "user", message: "authenticated" }) });
+        }
+        return Promise.resolve({ ok: false, json: async () => ({ error: "invalid credentials" }) });
+      }
+      if (url.startsWith("/api/boards")) {
+        return Promise.resolve({ ok: true, json: async () => MOCK_BOARDS });
+      }
+      if (url.startsWith("/api/board")) {
         const method = init?.method ?? "GET";
         if (method === "PUT") {
           return Promise.resolve({ ok: true, json: async () => initialData });
         }
         return Promise.resolve({ ok: true, json: async () => initialData });
       }
-      if (typeof input === "string" && input.startsWith("/api/chat")) {
+      if (url.startsWith("/api/chat")) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -63,13 +75,13 @@ describe("AuthGate", () => {
   });
 
   it("rejects invalid credentials", async () => {
-    mockApi();
+    mockApi(false);
     render(<AuthGate />);
     await screen.findByRole("heading", { name: /sign in/i });
 
     await userEvent.type(screen.getByLabelText(/username/i), "bad");
     await userEvent.type(screen.getByLabelText(/password/i), "wrong");
-    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await userEvent.click(screen.getByTestId("auth-submit"));
 
     expect(
       await screen.findByText(/invalid credentials/i)
@@ -83,7 +95,7 @@ describe("AuthGate", () => {
 
     await userEvent.type(screen.getByLabelText(/username/i), "user");
     await userEvent.type(screen.getByLabelText(/password/i), "password");
-    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await userEvent.click(screen.getByTestId("auth-submit"));
 
     expect(
       await screen.findByRole("heading", { name: /kanban studio/i })
@@ -106,14 +118,20 @@ describe("AuthGate", () => {
 
   it("shows an error when the board fails to load", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    fetchMock.mockResolvedValue({ ok: false, json: async () => ({}) });
+    fetchMock.mockImplementation((input: RequestInfo) => {
+      const url = typeof input === "string" ? input : "";
+      if (url.startsWith("/api/auth/login")) {
+        return Promise.resolve({ ok: true, json: async () => ({ username: "user", message: "authenticated" }) });
+      }
+      return Promise.resolve({ ok: false, json: async () => ({}) });
+    });
 
     render(<AuthGate />);
     await screen.findByRole("heading", { name: /sign in/i });
 
     await userEvent.type(screen.getByLabelText(/username/i), "user");
     await userEvent.type(screen.getByLabelText(/password/i), "password");
-    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await userEvent.click(screen.getByTestId("auth-submit"));
 
     expect(await screen.findByText(/unable to load your board/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
@@ -122,7 +140,14 @@ describe("AuthGate", () => {
   it("shows an error when the board fails to save", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockImplementation((input: RequestInfo, init?: RequestInit) => {
-      if (typeof input === "string" && input.startsWith("/api/board")) {
+      const url = typeof input === "string" ? input : "";
+      if (url.startsWith("/api/auth/login")) {
+        return Promise.resolve({ ok: true, json: async () => ({ username: "user", message: "authenticated" }) });
+      }
+      if (url.startsWith("/api/boards")) {
+        return Promise.resolve({ ok: true, json: async () => MOCK_BOARDS });
+      }
+      if (url.startsWith("/api/board")) {
         if ((init?.method ?? "GET") === "PUT") {
           return Promise.resolve({ ok: false, json: async () => ({ error: "Server error" }) });
         }
@@ -136,7 +161,7 @@ describe("AuthGate", () => {
 
     await userEvent.type(screen.getByLabelText(/username/i), "user");
     await userEvent.type(screen.getByLabelText(/password/i), "password");
-    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await userEvent.click(screen.getByTestId("auth-submit"));
 
     // Board loads; KanbanBoard mounts and fires onBoardChange → PUT → fails
     expect(await screen.findByText(/unable to save/i)).toBeInTheDocument();

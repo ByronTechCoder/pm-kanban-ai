@@ -16,10 +16,11 @@ type ChatResponse = {
 
 type ChatSidebarProps = {
   username: string;
+  boardId: string | null;
   onBoardUpdate: (board: BoardData) => void;
 };
 
-export const ChatSidebar = ({ username, onBoardUpdate }: ChatSidebarProps) => {
+export const ChatSidebar = ({ username, boardId, onBoardUpdate }: ChatSidebarProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState("");
@@ -44,7 +45,9 @@ export const ChatSidebar = ({ username, onBoardUpdate }: ChatSidebarProps) => {
     setIsSending(true);
 
     try {
-      const response = await fetch(`/api/chat?user=${encodeURIComponent(username)}`, {
+      const chatParams = new URLSearchParams({ user: username });
+      if (boardId) chatParams.set("board_id", boardId);
+      const response = await fetch(`/api/chat?${chatParams.toString()}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: nextPrompt, history }),

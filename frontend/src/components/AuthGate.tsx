@@ -6,20 +6,23 @@ import { ChatSidebar } from "@/components/ChatSidebar";
 import { type BoardData } from "@/lib/kanban";
 
 const AUTH_USER_KEY = "pm-user";
-const VALID_USERNAME = "user";
-const VALID_PASSWORD = "password";
 const LOAD_TIMEOUT_MS = 10_000;
 
 type AuthStatus = "unknown" | "signed-out" | "signed-in";
+type AuthMode = "login" | "register";
 
 export const AuthGate = () => {
   const [status, setStatus] = useState<AuthStatus>("unknown");
+  const [mode, setMode] = useState<AuthMode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [initialBoard, setInitialBoard] = useState<BoardData | null>(null);
+  const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
   const [apiError, setApiError] = useState("");
   const [isBoardLoading, setIsBoardLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const saveCounterRef = useRef(0);
 
   useEffect(() => {
@@ -32,13 +35,15 @@ export const AuthGate = () => {
     }
   }, []);
 
-  const loadBoard = useCallback(async (user: string) => {
+  const loadBoard = useCallback(async (user: string, boardId?: string | null) => {
     setIsBoardLoading(true);
     setApiError("");
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), LOAD_TIMEOUT_MS);
     try {
-      const response = await fetch(`/api/board?user=${encodeURIComponent(user)}`, {
+      const params = new URLSearchParams({ user });
+      if (boardId) params.set("board_id", boardId);
+      const response = await fetch(`/api/board?${params.toString()}`, {
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -56,68 +61,104 @@ export const AuthGate = () => {
 
   useEffect(() => {
     if (status === "signed-in" && username) {
-      void loadBoard(username);
+      void loadBoard(username, activeBoardId);
     }
-  }, [loadBoard, status, username]);
+  }, [loadBoard, status, username, activeBoardId]);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const isValid =
-      username.trim() === VALID_USERNAME && password === VALID_PASSWORD;
-
-    if (!isValid) {
-      setError("Invalid credentials. Try user / password.");
+    const trimmedUser = username.trim();
+    if (!trimmedUser) {
+      setError("Username is required.");
+      return;
+    }
+    if (!password) {
+      setError("Password is required.");
       return;
     }
 
-    const nextUser = username.trim();
-    window.localStorage.setItem(AUTH_USER_KEY, nextUser);
+    if (mode === "register") {
+      if (password.length < 6) {
+        setError("Password must be at least 6 characters.");
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError("Passwords do not match.");
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
     setError("");
-    setStatus("signed-in");
+
+    try {
+      const endpoint = mode === "register" ? "/api/auth/register" : "/api/auth/login";
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: trimmedUser, password }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        setError(data.error ?? (mode === "register" ? "Registration failed." : "Invalid credentials."));
+        return;
+      }
+
+      window.localStorage.setItem(AUTH_USER_KEY, trimmedUser);
+      setError("");
+      setStatus("signed-in");
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleLogout = () => {
     window.localStorage.removeItem(AUTH_USER_KEY);
     setUsername("");
     setPassword("");
+    setConfirmPassword("");
     setError("");
     setApiError("");
     setInitialBoard(null);
+    setActiveBoardId(null);
     setStatus("signed-out");
   };
 
   const handleBoardChange = useCallback(
     async (nextBoard: BoardData) => {
-      if (!username) {
-        return;
-      }
+      if (!username) return;
       saveCounterRef.current += 1;
       const myCount = saveCounterRef.current;
       try {
-        const response = await fetch(
-          `/api/board?user=${encodeURIComponent(username)}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(nextBoard),
-          }
-        );
+        const params = new URLSearchParams({ user: username });
+        if (activeBoardId) params.set("board_id", activeBoardId);
+        const response = await fetch(`/api/board?${params.toString()}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(nextBoard),
+        });
         if (myCount !== saveCounterRef.current) return;
-        if (!response.ok) {
-          throw new Error("Save failed");
-        }
+        if (!response.ok) throw new Error("Save failed");
         setApiError("");
       } catch {
         if (myCount !== saveCounterRef.current) return;
         setApiError("Unable to save changes. Please retry.");
       }
     },
-    [username]
+    [username, activeBoardId]
   );
 
   const handleAiBoardUpdate = useCallback((nextBoard: BoardData) => {
     setInitialBoard(nextBoard);
     setApiError("");
+  }, []);
+
+  const handleBoardSwitch = useCallback((boardId: string) => {
+    setActiveBoardId(boardId);
+    setInitialBoard(null);
   }, []);
 
   if (status === "unknown") {
@@ -134,7 +175,7 @@ export const AuthGate = () => {
 
     return (
       <div className="relative">
-        <div className="absolute left-6 top-6 z-30">
+        <div className="absolute left-6 top-6 z-30 flex items-center gap-2">
           <button
             type="button"
             onClick={handleLogout}
@@ -142,6 +183,9 @@ export const AuthGate = () => {
           >
             Log out
           </button>
+          <span className="text-xs text-[var(--gray-text)]">
+            {username}
+          </span>
         </div>
         {isBoardLoading ? (
           <div className="flex min-h-screen items-center justify-center">
@@ -155,7 +199,7 @@ export const AuthGate = () => {
               {apiError}
               <button
                 type="button"
-                onClick={() => void loadBoard(username)}
+                onClick={() => void loadBoard(username, activeBoardId)}
                 className="ml-3 text-xs font-semibold uppercase tracking-wide text-[var(--primary-blue)]"
               >
                 Retry
@@ -169,7 +213,7 @@ export const AuthGate = () => {
                 {apiError}
                 <button
                   type="button"
-                  onClick={() => void loadBoard(username)}
+                  onClick={() => void loadBoard(username, activeBoardId)}
                   className="ml-3 text-xs font-semibold uppercase tracking-wide text-[var(--primary-blue)]"
                 >
                   Retry
@@ -178,13 +222,17 @@ export const AuthGate = () => {
             ) : null}
             <KanbanBoard
               initialBoard={initialBoard}
+              username={username}
+              activeBoardId={activeBoardId}
               onBoardChange={handleBoardChange}
+              onBoardSwitch={handleBoardSwitch}
             />
           </div>
         ) : null}
         {showBoard ? (
           <ChatSidebar
             username={username}
+            boardId={activeBoardId}
             onBoardUpdate={handleAiBoardUpdate}
           />
         ) : null}
@@ -203,11 +251,33 @@ export const AuthGate = () => {
             Kanban Studio
           </p>
           <h1 className="mt-3 font-display text-3xl font-semibold text-[var(--navy-dark)]">
-            Sign in
+            {mode === "login" ? "Sign in" : "Create account"}
           </h1>
-          <p className="mt-3 text-sm leading-6 text-[var(--gray-text)]">
-            Use the demo credentials to access your board.
-          </p>
+
+          <div className="mt-4 flex gap-1 rounded-xl border border-[var(--stroke)] bg-[var(--surface)] p-1">
+            <button
+              type="button"
+              onClick={() => { setMode("login"); setError(""); }}
+              className={`flex-1 rounded-lg py-1.5 text-xs font-semibold uppercase tracking-[0.15em] transition ${
+                mode === "login"
+                  ? "bg-white text-[var(--navy-dark)] shadow-sm"
+                  : "text-[var(--gray-text)]"
+              }`}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode("register"); setError(""); }}
+              className={`flex-1 rounded-lg py-1.5 text-xs font-semibold uppercase tracking-[0.15em] transition ${
+                mode === "register"
+                  ? "bg-white text-[var(--navy-dark)] shadow-sm"
+                  : "text-[var(--gray-text)]"
+              }`}
+            >
+              Register
+            </button>
+          </div>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
@@ -227,23 +297,37 @@ export const AuthGate = () => {
                 onChange={(event) => setPassword(event.target.value)}
                 type="password"
                 className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
-                autoComplete="current-password"
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
                 required
               />
             </label>
+            {mode === "register" ? (
+              <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                Confirm Password
+                <input
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  type="password"
+                  className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+            ) : null}
             {error ? (
               <p className="text-sm text-[var(--secondary-purple)]">{error}</p>
             ) : null}
             <button
               type="submit"
-              className="w-full rounded-full bg-[var(--secondary-purple)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:brightness-110"
+              data-testid="auth-submit"
+              disabled={isSubmitting}
+              className="w-full rounded-full bg-[var(--secondary-purple)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              Sign in
+              {isSubmitting
+                ? mode === "register" ? "Creating..." : "Signing in..."
+                : mode === "register" ? "Create account" : "Sign in"}
             </button>
           </form>
-          <p className="mt-4 text-xs text-[var(--gray-text)]">
-            Demo credentials: user / password
-          </p>
         </div>
       </main>
     </div>
