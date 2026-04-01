@@ -79,7 +79,7 @@ export const ChatSidebar = ({ username, onBoardUpdate }: ChatSidebarProps) => {
   };
 
   return (
-    <aside className="fixed bottom-4 right-4 top-20 z-20 w-[340px] rounded-3xl border border-[var(--stroke)] bg-white/95 p-4 shadow-[var(--shadow)] backdrop-blur lg:bottom-6 lg:right-6 lg:top-24">
+    <aside className="fixed bottom-4 right-4 top-4 z-20 w-[340px] rounded-2xl border border-[var(--stroke)] bg-white/95 p-4 shadow-[var(--shadow)] backdrop-blur xl:bottom-6 xl:right-6 xl:top-6">
       <div className="flex h-full flex-col">
         <div className="mb-3 border-b border-[var(--stroke)] pb-3">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">

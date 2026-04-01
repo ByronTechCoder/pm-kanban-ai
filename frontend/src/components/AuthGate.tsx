@@ -163,7 +163,7 @@ export const AuthGate = () => {
             </div>
           </div>
         ) : showBoard ? (
-          <div className="lg:pr-[360px]">
+          <div className="xl:pr-[360px]">
             {apiError ? (
               <div className="mx-auto mt-6 w-full max-w-[1200px] rounded-2xl border border-[var(--stroke)] bg-white/90 px-5 py-3 text-sm text-[var(--secondary-purple)] shadow-sm">
                 {apiError}
