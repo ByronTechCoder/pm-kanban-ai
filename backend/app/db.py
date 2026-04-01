@@ -54,6 +54,7 @@ def init_db() -> None:
                 title TEXT NOT NULL,
                 order_index INTEGER NOT NULL,
                 wip_limit INTEGER,
+                color TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(board_id) REFERENCES boards(id) ON DELETE CASCADE
@@ -129,6 +130,8 @@ def init_db() -> None:
         }
         if "wip_limit" not in col_cols:
             conn.execute("ALTER TABLE columns ADD COLUMN wip_limit INTEGER")
+        if "color" not in col_cols:
+            conn.execute("ALTER TABLE columns ADD COLUMN color TEXT")
 
         # Migrate existing cards table if missing new columns
         card_cols = {
@@ -362,7 +365,7 @@ def _seed_board_if_empty(conn: sqlite3.Connection, board_id: str) -> None:
 def load_board(board_id: str) -> dict[str, Any]:
     with get_connection() as conn:
         columns_rows = conn.execute(
-            "SELECT id, title, wip_limit FROM columns WHERE board_id = ? ORDER BY order_index",
+            "SELECT id, title, wip_limit, color FROM columns WHERE board_id = ? ORDER BY order_index",
             (board_id,),
         ).fetchall()
         columns = []
@@ -389,6 +392,7 @@ def load_board(board_id: str) -> dict[str, Any]:
                     "id": column["id"],
                     "title": column["title"],
                     "wipLimit": column["wip_limit"],
+                    "color": column["color"],
                     "cardIds": card_ids,
                 }
             )
@@ -407,8 +411,8 @@ def replace_board(board_id: str, board: dict[str, Any]) -> None:
 
         for col_index, column in enumerate(board["columns"]):
             conn.execute(
-                "INSERT INTO columns (id, board_id, title, order_index, wip_limit, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (column["id"], board_id, column["title"], col_index, column.get("wipLimit"), now, now),
+                "INSERT INTO columns (id, board_id, title, order_index, wip_limit, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (column["id"], board_id, column["title"], col_index, column.get("wipLimit"), column.get("color"), now, now),
             )
             for card_index, card_id in enumerate(column["cardIds"]):
                 card = board["cards"][card_id]

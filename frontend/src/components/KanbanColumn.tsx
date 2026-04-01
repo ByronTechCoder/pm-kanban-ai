@@ -19,6 +19,7 @@ type KanbanColumnProps = {
   onDuplicateCard: (cardId: string) => void;
   onArchiveCard: (cardId: string) => void;
   onSetWipLimit: (columnId: string, limit: number | null) => void;
+  onSetColor: (columnId: string, color: string | null) => void;
 };
 
 export const KanbanColumn = ({
@@ -33,6 +34,7 @@ export const KanbanColumn = ({
   onDuplicateCard,
   onArchiveCard,
   onSetWipLimit,
+  onSetColor,
 }: KanbanColumnProps) => {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: column.id });
   const {
@@ -45,6 +47,9 @@ export const KanbanColumn = ({
   } = useSortable({ id: column.id });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showWipInput, setShowWipInput] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
+  const COLUMN_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6","#f97316"];
   const [wipInputValue, setWipInputValue] = useState(
     column.wipLimit != null ? String(column.wipLimit) : ""
   );
@@ -86,7 +91,8 @@ export const KanbanColumn = ({
     >
       <div className="mb-3 flex items-center gap-2 border-b border-[var(--stroke)] pb-3">
         <div
-          className="h-1.5 w-6 flex-shrink-0 cursor-grab rounded-full bg-[var(--accent-yellow)] active:cursor-grabbing"
+          className="h-1.5 w-6 flex-shrink-0 cursor-grab rounded-full active:cursor-grabbing"
+          style={{ backgroundColor: column.color ?? "var(--accent-yellow)" }}
           {...attributes}
           {...listeners}
           title="Drag to reorder"
@@ -128,6 +134,38 @@ export const KanbanColumn = ({
             {isOverWip && " ⚠"}
           </button>
         )}
+        {/* Color picker */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowColorPicker((v) => !v)}
+            className="flex-shrink-0 rounded-lg p-1 text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+            title="Column color"
+          >
+            <div className="h-3 w-3 rounded-full border border-[var(--stroke)]" style={{ backgroundColor: column.color ?? "transparent" }} />
+          </button>
+          {showColorPicker ? (
+            <div className="absolute right-0 top-7 z-20 flex gap-1.5 rounded-xl border border-[var(--stroke)] bg-white p-2 shadow-lg">
+              {COLUMN_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => { onSetColor(column.id, c); setShowColorPicker(false); }}
+                  className="h-5 w-5 rounded-full transition hover:scale-110"
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+              <button
+                type="button"
+                onClick={() => { onSetColor(column.id, null); setShowColorPicker(false); }}
+                className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--stroke)] text-[8px] text-[var(--gray-text)] transition hover:scale-110"
+                title="Remove color"
+              >
+                ✕
+              </button>
+            </div>
+          ) : null}
+        </div>
         {showDeleteConfirm ? (
           <div className="flex items-center gap-1">
             <button

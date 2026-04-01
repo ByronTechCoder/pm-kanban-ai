@@ -216,6 +216,7 @@ class Column(BaseModel):
     id: str
     title: str
     wipLimit: int | None = None
+    color: str | None = None
     cardIds: list[str]
 
 
@@ -685,6 +686,27 @@ def export_board(
         "exported_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
         "data": board,
     }
+
+
+@app.post("/api/boards/{board_id}/import", response_model=BoardData)
+def import_board(
+    board_id: str,
+    payload: dict,
+    user: str | None = Query(default=None),
+) -> BoardData:
+    """Import board data from an export JSON, replacing current board contents."""
+    username = _require_user(user)
+    _require_board_access(board_id, username)
+    # Accept either a raw BoardData or an export envelope {"data": {...}}
+    raw = payload.get("data", payload)
+    try:
+        board = BoardData.model_validate(raw)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid board data: {exc}")
+    _validate_board_integrity(board)
+    replace_board(board_id, board.model_dump())
+    log_activity(board_id, username, "import", "board", "Imported board data")
+    return BoardData(**load_board(board_id))
 
 
 @app.get("/api/board/search")

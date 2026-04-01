@@ -268,7 +268,7 @@ export const KanbanBoard = ({
     const id = createId("col");
     setBoard((prev) => ({
       ...prev,
-      columns: [...prev.columns, { id, title, wipLimit: null, cardIds: [] }],
+      columns: [...prev.columns, { id, title, wipLimit: null, color: null, cardIds: [] }],
     }));
     setNewColumnTitle("");
     setAddingColumn(false);
@@ -383,6 +383,15 @@ export const KanbanBoard = ({
       ...prev,
       columns: prev.columns.map((c) =>
         c.id === columnId ? { ...c, wipLimit: limit } : c
+      ),
+    }));
+  };
+
+  const handleSetColor = (columnId: string, color: string | null) => {
+    setBoard((prev) => ({
+      ...prev,
+      columns: prev.columns.map((c) =>
+        c.id === columnId ? { ...c, color } : c
       ),
     }));
   };
@@ -640,6 +649,7 @@ export const KanbanBoard = ({
                   onDuplicateCard={handleDuplicateCard}
                   onArchiveCard={handleArchiveCard}
                   onSetWipLimit={handleSetWipLimit}
+                  onSetColor={handleSetColor}
                 />
               ))}
             </SortableContext>
