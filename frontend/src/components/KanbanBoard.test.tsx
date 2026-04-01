@@ -82,4 +82,18 @@ describe("KanbanBoard", () => {
     // All cards back
     expect(screen.getByText("Gather customer signals")).toBeInTheDocument();
   });
+
+  it("sort dropdown renders with default option", () => {
+    render(<KanbanBoard />);
+    const sortSelect = screen.getByLabelText(/sort cards/i);
+    expect(sortSelect).toBeInTheDocument();
+    expect(sortSelect).toHaveValue("default");
+  });
+
+  it("can switch sort mode", async () => {
+    render(<KanbanBoard />);
+    const sortSelect = screen.getByLabelText(/sort cards/i);
+    await userEvent.selectOptions(sortSelect, "priority");
+    expect(sortSelect).toHaveValue("priority");
+  });
 });

@@ -54,6 +54,7 @@ export const KanbanBoard = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterPriority, setFilterPriority] = useState<string>("all");
   const [filterLabel, setFilterLabel] = useState<string>("");
+  const [sortMode, setSortMode] = useState<"default" | "priority" | "due" | "title">("default");
   const [boardStats, setBoardStats] = useState<{
     total_cards: number;
     overdue_cards: number;
@@ -81,11 +82,12 @@ export const KanbanBoard = ({
 
   const cardsById = useMemo(() => board.cards, [board.cards]);
 
+  const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2, none: 3 };
+
   const filteredColumns = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    return board.columns.map((col) => ({
-      ...col,
-      cardIds: col.cardIds.filter((id) => {
+    return board.columns.map((col) => {
+      let ids = col.cardIds.filter((id) => {
         const card = board.cards[id];
         if (!card) return false;
         if (filterPriority !== "all" && card.priority !== filterPriority) return false;
@@ -101,9 +103,26 @@ export const KanbanBoard = ({
           );
         }
         return true;
-      }),
-    }));
-  }, [board.columns, board.cards, searchQuery, filterPriority, filterLabel]);
+      });
+      if (sortMode !== "default") {
+        ids = [...ids].sort((a, b) => {
+          const ca = board.cards[a];
+          const cb = board.cards[b];
+          if (!ca || !cb) return 0;
+          if (sortMode === "priority") return (PRIORITY_RANK[ca.priority] ?? 3) - (PRIORITY_RANK[cb.priority] ?? 3);
+          if (sortMode === "due") {
+            if (!ca.dueDate && !cb.dueDate) return 0;
+            if (!ca.dueDate) return 1;
+            if (!cb.dueDate) return -1;
+            return ca.dueDate.localeCompare(cb.dueDate);
+          }
+          if (sortMode === "title") return ca.title.localeCompare(cb.title);
+          return 0;
+        });
+      }
+      return { ...col, cardIds: ids };
+    });
+  }, [board.columns, board.cards, searchQuery, filterPriority, filterLabel, sortMode]);
 
   const isFiltering = searchQuery.trim() !== "" || filterPriority !== "all" || filterLabel.trim() !== "";
 
@@ -567,6 +586,17 @@ export const KanbanBoard = ({
                 ))}
               </select>
             ) : null}
+            <select
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
+              aria-label="Sort cards"
+              className="rounded-xl border border-[var(--stroke)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+            >
+              <option value="default">Default order</option>
+              <option value="priority">Sort by priority</option>
+              <option value="due">Sort by due date</option>
+              <option value="title">Sort by title</option>
+            </select>
             {isFiltering ? (
               <button
                 type="button"
