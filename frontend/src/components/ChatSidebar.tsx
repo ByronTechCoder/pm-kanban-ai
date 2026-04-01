@@ -16,11 +16,11 @@ type ChatResponse = {
 
 type ChatSidebarProps = {
   username: string;
-  boardId: string | null;
+  boardId?: string | null;
   onBoardUpdate: (board: BoardData) => void;
 };
 
-export const ChatSidebar = ({ username, boardId, onBoardUpdate }: ChatSidebarProps) => {
+export const ChatSidebar = ({ username, boardId = null, onBoardUpdate }: ChatSidebarProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState("");
@@ -101,7 +101,7 @@ export const ChatSidebar = ({ username, boardId, onBoardUpdate }: ChatSidebarPro
         <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] p-3">
           {isEmpty ? (
             <p className="text-sm text-[var(--gray-text)]">
-              Try: Move "Design card layout" to Review.
+              Try: Move &quot;Design card layout&quot; to Review.
             </p>
           ) : (
             <ul className="space-y-3">
