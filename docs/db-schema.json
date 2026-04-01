@@ -1,0 +1,71 @@
+{
+  "tables": {
+    "users": {
+      "columns": {
+        "id": "TEXT PRIMARY KEY",
+        "username": "TEXT UNIQUE NOT NULL",
+        "created_at": "TEXT NOT NULL"
+      },
+      "indexes": ["username"]
+    },
+    "boards": {
+      "columns": {
+        "id": "TEXT PRIMARY KEY",
+        "user_id": "TEXT NOT NULL",
+        "title": "TEXT NOT NULL",
+        "created_at": "TEXT NOT NULL",
+        "updated_at": "TEXT NOT NULL"
+      },
+      "indexes": ["user_id"],
+      "foreign_keys": [
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "on_delete": "CASCADE"
+        }
+      ]
+    },
+    "columns": {
+      "columns": {
+        "id": "TEXT PRIMARY KEY",
+        "board_id": "TEXT NOT NULL",
+        "title": "TEXT NOT NULL",
+        "order_index": "INTEGER NOT NULL",
+        "created_at": "TEXT NOT NULL",
+        "updated_at": "TEXT NOT NULL"
+      },
+      "indexes": ["board_id", "order_index"],
+      "foreign_keys": [
+        {
+          "column": "board_id",
+          "references": "boards.id",
+          "on_delete": "CASCADE"
+        }
+      ]
+    },
+    "cards": {
+      "columns": {
+        "id": "TEXT PRIMARY KEY",
+        "column_id": "TEXT NOT NULL",
+        "title": "TEXT NOT NULL",
+        "details": "TEXT NOT NULL",
+        "order_index": "INTEGER NOT NULL",
+        "created_at": "TEXT NOT NULL",
+        "updated_at": "TEXT NOT NULL"
+      },
+      "indexes": ["column_id", "order_index"],
+      "foreign_keys": [
+        {
+          "column": "column_id",
+          "references": "columns.id",
+          "on_delete": "CASCADE"
+        }
+      ]
+    }
+  },
+  "notes": [
+    "Use a single board per user in the MVP. Enforce by creating one board on first login.",
+    "order_index is zero-based and used for ordering columns and cards.",
+    "Timestamps use ISO-8601 strings in UTC."
+  ]
+}

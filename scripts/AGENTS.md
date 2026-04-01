@@ -1,1 +1,3 @@
-This folder will contain start and stop scripts for Mac, PC and Linux
+# Scripts summary
+
+This folder contains start and stop scripts for Mac, Linux, and Windows that build and run the Docker container locally.

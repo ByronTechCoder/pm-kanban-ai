@@ -1,13 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  closestCenter,
   useSensor,
   useSensors,
   closestCorners,
+  pointerWithin,
+  rectIntersection,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -15,8 +19,18 @@ import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
 
-export const KanbanBoard = () => {
-  const [board, setBoard] = useState<BoardData>(() => initialData);
+type KanbanBoardProps = {
+  initialBoard?: BoardData;
+  onBoardChange?: (board: BoardData) => void;
+};
+
+export const KanbanBoard = ({
+  initialBoard,
+  onBoardChange,
+}: KanbanBoardProps) => {
+  const [board, setBoard] = useState<BoardData>(
+    () => initialBoard ?? initialData
+  );
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -25,7 +39,33 @@ export const KanbanBoard = () => {
     })
   );
 
+  const collisionDetection: CollisionDetection = (args) => {
+    const pointerHits = pointerWithin(args);
+    if (pointerHits.length > 0) {
+      return pointerHits;
+    }
+
+    const rectHits = rectIntersection(args);
+    if (rectHits.length > 0) {
+      return rectHits;
+    }
+
+    return closestCenter(args);
+  };
+
   const cardsById = useMemo(() => board.cards, [board.cards]);
+
+  useEffect(() => {
+    if (onBoardChange) {
+      onBoardChange(board);
+    }
+  }, [board, onBoardChange]);
+
+  useEffect(() => {
+    if (initialBoard) {
+      setBoard(initialBoard);
+    }
+  }, [initialBoard]);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
@@ -135,7 +175,7 @@ export const KanbanBoard = () => {
 
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collisionDetection}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
