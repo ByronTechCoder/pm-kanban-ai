@@ -16,6 +16,7 @@ from .db import (
     add_comment,
     archive_card,
     authenticate_user,
+    change_password,
     board_belongs_to_user,
     card_accessible_by_user,
     create_board,
@@ -99,6 +100,24 @@ def api_login(payload: AuthRequest) -> AuthResponse:
     if not user_id:
         raise HTTPException(status_code=401, detail="invalid credentials")
     return AuthResponse(username=payload.username.strip(), message="authenticated")
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@app.post("/api/auth/change-password", response_model=AuthResponse)
+def api_change_password(
+    payload: ChangePasswordRequest,
+    user: str | None = Query(default=None),
+) -> AuthResponse:
+    username = _require_user(user)
+    if not payload.new_password or len(payload.new_password) < 6:
+        raise HTTPException(status_code=400, detail="new password must be at least 6 characters")
+    if not change_password(username, payload.old_password, payload.new_password):
+        raise HTTPException(status_code=401, detail="current password is incorrect")
+    return AuthResponse(username=username, message="password changed")
 
 
 # ---------------------------------------------------------------------------

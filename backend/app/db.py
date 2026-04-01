@@ -192,6 +192,22 @@ def authenticate_user(username: str, password: str) -> str | None:
     return str(row["id"])
 
 
+def change_password(username: str, old_password: str, new_password: str) -> bool:
+    """Change a user's password. Returns False if old_password is wrong."""
+    user_id = authenticate_user(username, old_password)
+    if not user_id:
+        return False
+    salt = secrets.token_hex(32)
+    password_hash = _hash_password(new_password, salt)
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ?, password_salt = ? WHERE username = ?",
+            (password_hash, salt, username),
+        )
+        conn.commit()
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Board management
 # ---------------------------------------------------------------------------

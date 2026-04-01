@@ -161,6 +161,40 @@ export const AuthGate = () => {
     setInitialBoard(null);
   }, []);
 
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [cpOldPassword, setCpOldPassword] = useState("");
+  const [cpNewPassword, setCpNewPassword] = useState("");
+  const [cpConfirm, setCpConfirm] = useState("");
+  const [cpError, setCpError] = useState("");
+  const [cpSuccess, setCpSuccess] = useState(false);
+  const [cpSubmitting, setCpSubmitting] = useState(false);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCpError("");
+    if (cpNewPassword.length < 6) { setCpError("New password must be at least 6 characters."); return; }
+    if (cpNewPassword !== cpConfirm) { setCpError("Passwords do not match."); return; }
+    setCpSubmitting(true);
+    try {
+      const resp = await fetch(`/api/auth/change-password?user=${encodeURIComponent(username)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ old_password: cpOldPassword, new_password: cpNewPassword }),
+      });
+      if (resp.ok) {
+        setCpSuccess(true);
+        setCpOldPassword(""); setCpNewPassword(""); setCpConfirm("");
+      } else {
+        const d = (await resp.json()) as { error?: string };
+        setCpError(d.error ?? "Failed to change password.");
+      }
+    } catch {
+      setCpError("Network error.");
+    } finally {
+      setCpSubmitting(false);
+    }
+  };
+
   if (status === "unknown") {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -183,10 +217,62 @@ export const AuthGate = () => {
           >
             Log out
           </button>
+          <button
+            type="button"
+            onClick={() => { setShowChangePassword(true); setCpSuccess(false); setCpError(""); }}
+            title="Account settings"
+            className="rounded-full border border-[var(--stroke)] bg-white/90 p-2 text-[var(--gray-text)] shadow-sm transition hover:text-[var(--navy-dark)]"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
           <span className="text-xs text-[var(--gray-text)]">
             {username}
           </span>
         </div>
+
+        {/* Change-password modal */}
+        {showChangePassword ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowChangePassword(false)}>
+            <div className="w-full max-w-sm rounded-[24px] border border-[var(--stroke)] bg-white p-8 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <h2 className="font-display text-lg font-semibold text-[var(--navy-dark)]">Change Password</h2>
+              {cpSuccess ? (
+                <p className="mt-4 text-sm text-green-600">Password changed successfully.</p>
+              ) : (
+                <form onSubmit={(e) => void handleChangePassword(e)} className="mt-4 space-y-3">
+                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                    Current Password
+                    <input type="password" value={cpOldPassword} onChange={(e) => setCpOldPassword(e.target.value)} required
+                      className="mt-1 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--primary-blue)]" />
+                  </label>
+                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                    New Password
+                    <input type="password" value={cpNewPassword} onChange={(e) => setCpNewPassword(e.target.value)} required
+                      className="mt-1 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--primary-blue)]" />
+                  </label>
+                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                    Confirm New Password
+                    <input type="password" value={cpConfirm} onChange={(e) => setCpConfirm(e.target.value)} required
+                      className="mt-1 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--primary-blue)]" />
+                  </label>
+                  {cpError ? <p className="text-sm text-[var(--secondary-purple)]">{cpError}</p> : null}
+                  <div className="flex gap-3 pt-2">
+                    <button type="submit" disabled={cpSubmitting}
+                      className="flex-1 rounded-full bg-[var(--secondary-purple)] px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:brightness-110 disabled:opacity-60">
+                      {cpSubmitting ? "Saving..." : "Change Password"}
+                    </button>
+                    <button type="button" onClick={() => setShowChangePassword(false)}
+                      className="flex-1 rounded-full border border-[var(--stroke)] px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        ) : null}
         {isBoardLoading ? (
           <div className="flex min-h-screen items-center justify-center">
             <div className="rounded-2xl border border-[var(--stroke)] bg-white/90 px-6 py-4 text-sm text-[var(--gray-text)] shadow-sm">

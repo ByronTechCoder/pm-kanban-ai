@@ -169,6 +169,21 @@ export const KanbanBoard = ({
 
   const columnIds = useMemo(() => board.columns.map((c) => c.id), [board.columns]);
 
+  // Keyboard shortcuts: "/" focuses search, "Escape" clears search
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      const isEditing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      if (e.key === "/" && !isEditing) {
+        e.preventDefault();
+        const searchEl = document.getElementById("board-search");
+        searchEl?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
+
   const handleDragStart = (event: DragStartEvent) => {
     const id = event.active.id as string;
     if (!columnIds.includes(id)) {
@@ -510,9 +525,10 @@ export const KanbanBoard = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
+                id="board-search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search cards..."
+                placeholder='Search cards… ("/" to focus)'
                 aria-label="Search cards"
                 className="rounded-xl border border-[var(--stroke)] bg-white py-1.5 pl-9 pr-3 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)] w-48"
               />
