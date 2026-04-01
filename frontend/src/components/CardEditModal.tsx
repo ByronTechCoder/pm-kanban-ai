@@ -33,6 +33,7 @@ export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModal
   const [priority, setPriority] = useState<Priority>(card.priority ?? "none");
   const [dueDate, setDueDate] = useState(card.dueDate ?? "");
   const [labels, setLabels] = useState(card.labels ?? "");
+  const [estimate, setEstimate] = useState<string>(card.estimate != null ? String(card.estimate) : "");
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [isPostingComment, setIsPostingComment] = useState(false);
@@ -74,12 +75,14 @@ export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModal
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!title.trim()) return;
+    const estimateVal = estimate.trim();
     onSave({
       title: title.trim(),
       details: details.trim(),
       priority,
       dueDate: dueDate.trim() || null,
       labels: labels.trim(),
+      estimate: estimateVal ? (parseInt(estimateVal, 10) || null) : null,
     });
   };
 
@@ -261,18 +264,35 @@ export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModal
                 </label>
               </div>
 
-              <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
-                Labels
-                <input
-                  value={labels}
-                  onChange={(e) => setLabels(e.target.value)}
-                  placeholder="bug, urgent, frontend"
-                  className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
-                />
-                <span className="mt-1 block text-[10px] normal-case font-normal text-[var(--gray-text)]">
-                  Comma-separated
-                </span>
-              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                  Labels
+                  <input
+                    value={labels}
+                    onChange={(e) => setLabels(e.target.value)}
+                    placeholder="bug, frontend"
+                    className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+                  />
+                  <span className="mt-1 block text-[10px] normal-case font-normal text-[var(--gray-text)]">
+                    Comma-separated
+                  </span>
+                </label>
+                <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                  Estimate (pts)
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={estimate}
+                    onChange={(e) => setEstimate(e.target.value)}
+                    placeholder="—"
+                    className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+                  />
+                  <span className="mt-1 block text-[10px] normal-case font-normal text-[var(--gray-text)]">
+                    Story points
+                  </span>
+                </label>
+              </div>
 
               <div className="flex gap-3 pt-2">
                 <button

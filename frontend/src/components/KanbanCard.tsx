@@ -121,15 +121,18 @@ export const KanbanCard = ({ card, username, onDelete, onEdit, onDuplicate, onAr
           </p>
         ) : null}
 
-        {labelList.length > 0 ? (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {labelList.map((label) => (
-              <span key={label} className="rounded-full bg-[var(--surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--gray-text)]">
-                {label}
-              </span>
-            ))}
-          </div>
-        ) : null}
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          {labelList.map((label) => (
+            <span key={label} className="rounded-full bg-[var(--surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--gray-text)]">
+              {label}
+            </span>
+          ))}
+          {card.estimate != null ? (
+            <span className="ml-auto rounded-full bg-[var(--primary-blue)]/10 px-2 py-0.5 text-[10px] font-semibold text-[var(--primary-blue)]">
+              {card.estimate}pts
+            </span>
+          ) : null}
+        </div>
       </article>
 
       {showEdit ? (

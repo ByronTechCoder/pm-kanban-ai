@@ -7,6 +7,7 @@ export type Card = {
   priority: Priority;
   dueDate: string | null;
   labels: string;
+  estimate: number | null;
 };
 
 export type Column = {
@@ -44,6 +45,7 @@ export const initialData: BoardData = {
       priority: "none",
       dueDate: null,
       labels: "",
+      estimate: null,
     },
     "card-2": {
       id: "card-2",
@@ -52,6 +54,7 @@ export const initialData: BoardData = {
       priority: "none",
       dueDate: null,
       labels: "",
+      estimate: null,
     },
     "card-3": {
       id: "card-3",
@@ -60,6 +63,7 @@ export const initialData: BoardData = {
       priority: "none",
       dueDate: null,
       labels: "",
+      estimate: null,
     },
     "card-4": {
       id: "card-4",
@@ -68,6 +72,7 @@ export const initialData: BoardData = {
       priority: "none",
       dueDate: null,
       labels: "",
+      estimate: null,
     },
     "card-5": {
       id: "card-5",
@@ -76,6 +81,7 @@ export const initialData: BoardData = {
       priority: "none",
       dueDate: null,
       labels: "",
+      estimate: null,
     },
     "card-6": {
       id: "card-6",
@@ -84,6 +90,7 @@ export const initialData: BoardData = {
       priority: "none",
       dueDate: null,
       labels: "",
+      estimate: null,
     },
     "card-7": {
       id: "card-7",
@@ -92,6 +99,7 @@ export const initialData: BoardData = {
       priority: "none",
       dueDate: null,
       labels: "",
+      estimate: null,
     },
     "card-8": {
       id: "card-8",
@@ -100,6 +108,7 @@ export const initialData: BoardData = {
       priority: "none",
       dueDate: null,
       labels: "",
+      estimate: null,
     },
   },
 };

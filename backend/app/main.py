@@ -210,6 +210,7 @@ class Card(BaseModel):
     priority: str = "none"
     dueDate: str | None = None
     labels: str = ""
+    estimate: int | None = None
 
 
 class Column(BaseModel):
@@ -643,6 +644,8 @@ class BoardStats(BaseModel):
     cards_per_column: dict[str, int]
     overdue_cards: int
     high_priority_cards: int
+    total_estimate: int
+    estimated_cards: int
 
 
 @app.get("/api/boards/{board_id}/stats", response_model=BoardStats)
@@ -661,12 +664,15 @@ def get_board_stats(
         if c.dueDate and c.dueDate < today
     )
     high_pri = sum(1 for c in board.cards.values() if c.priority == "high")
+    estimated = [c for c in board.cards.values() if c.estimate is not None]
     return BoardStats(
         board_id=board_id,
         total_cards=total,
         cards_per_column=cards_per_col,
         overdue_cards=overdue,
         high_priority_cards=high_pri,
+        total_estimate=sum(c.estimate for c in estimated),
+        estimated_cards=len(estimated),
     )
 
 

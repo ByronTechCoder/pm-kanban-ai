@@ -67,6 +67,7 @@ def init_db() -> None:
                 priority TEXT NOT NULL DEFAULT 'none',
                 due_date TEXT,
                 labels TEXT NOT NULL DEFAULT '',
+                estimate INTEGER,
                 order_index INTEGER NOT NULL,
                 archived INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
@@ -150,6 +151,8 @@ def init_db() -> None:
             )
         if "archived" not in card_cols:
             conn.execute("ALTER TABLE cards ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+        if "estimate" not in card_cols:
+            conn.execute("ALTER TABLE cards ADD COLUMN estimate INTEGER")
         conn.commit()
 
 
@@ -373,7 +376,7 @@ def load_board(board_id: str) -> dict[str, Any]:
 
         for column in columns_rows:
             card_rows = conn.execute(
-                "SELECT id, title, details, priority, due_date, labels FROM cards WHERE column_id = ? AND archived = 0 ORDER BY order_index",
+                "SELECT id, title, details, priority, due_date, labels, estimate FROM cards WHERE column_id = ? AND archived = 0 ORDER BY order_index",
                 (column["id"],),
             ).fetchall()
             card_ids = []
@@ -386,6 +389,7 @@ def load_board(board_id: str) -> dict[str, Any]:
                     "priority": card["priority"] or "none",
                     "dueDate": card["due_date"],
                     "labels": card["labels"] or "",
+                    "estimate": card["estimate"],
                 }
             columns.append(
                 {
@@ -417,7 +421,7 @@ def replace_board(board_id: str, board: dict[str, Any]) -> None:
             for card_index, card_id in enumerate(column["cardIds"]):
                 card = board["cards"][card_id]
                 conn.execute(
-                    "INSERT INTO cards (id, column_id, title, details, priority, due_date, labels, order_index, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO cards (id, column_id, title, details, priority, due_date, labels, estimate, order_index, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         card["id"],
                         column["id"],
@@ -426,6 +430,7 @@ def replace_board(board_id: str, board: dict[str, Any]) -> None:
                         card.get("priority", "none"),
                         card.get("dueDate"),
                         card.get("labels", ""),
+                        card.get("estimate"),
                         card_index,
                         now,
                         now,
@@ -497,7 +502,7 @@ def duplicate_card(card_id: str) -> dict[str, Any] | None:
             (row["column_id"],),
         ).fetchone()[0]
         conn.execute(
-            "INSERT INTO cards (id, column_id, title, details, priority, due_date, labels, order_index, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO cards (id, column_id, title, details, priority, due_date, labels, estimate, order_index, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 new_id,
                 row["column_id"],
@@ -506,6 +511,7 @@ def duplicate_card(card_id: str) -> dict[str, Any] | None:
                 row["priority"] or "none",
                 row["due_date"],
                 row["labels"] or "",
+                row["estimate"],
                 max_index + 1,
                 now,
                 now,

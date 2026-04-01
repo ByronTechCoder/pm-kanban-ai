@@ -59,6 +59,8 @@ export const KanbanBoard = ({
     total_cards: number;
     overdue_cards: number;
     high_priority_cards: number;
+    total_estimate: number;
+    estimated_cards: number;
   } | null>(null);
   const [showArchiveView, setShowArchiveView] = useState(false);
   const [archivedCards, setArchivedCards] = useState<Array<{
@@ -628,6 +630,11 @@ export const KanbanBoard = ({
             {boardStats.high_priority_cards > 0 ? (
               <span className="font-semibold text-red-600">
                 {boardStats.high_priority_cards} high priority
+              </span>
+            ) : null}
+            {boardStats.estimated_cards > 0 ? (
+              <span className="text-[var(--primary-blue)] font-semibold">
+                {boardStats.total_estimate}pts total
               </span>
             ) : null}
             <div className="ml-auto flex gap-2">
