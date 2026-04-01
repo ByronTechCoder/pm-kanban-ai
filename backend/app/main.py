@@ -12,12 +12,16 @@ import requests
 from dotenv import load_dotenv
 
 from .db import (
+    add_checklist_item,
     add_comment,
     authenticate_user,
     board_belongs_to_user,
     card_accessible_by_user,
     create_board,
     delete_board,
+    delete_checklist_item,
+    duplicate_card,
+    get_checklist,
     get_comments,
     get_or_create_board,
     init_db,
@@ -26,6 +30,7 @@ from .db import (
     register_user,
     rename_board,
     replace_board,
+    update_checklist_item,
 )
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
@@ -171,6 +176,31 @@ def del_board(
 
 
 # ---------------------------------------------------------------------------
+# Card / Column / Board data models (shared across endpoints)
+# ---------------------------------------------------------------------------
+
+class Card(BaseModel):
+    id: str
+    title: str
+    details: str
+    priority: str = "none"
+    dueDate: str | None = None
+    labels: str = ""
+
+
+class Column(BaseModel):
+    id: str
+    title: str
+    wipLimit: int | None = None
+    cardIds: list[str]
+
+
+class BoardData(BaseModel):
+    columns: list[Column]
+    cards: dict[str, Card]
+
+
+# ---------------------------------------------------------------------------
 # Comment models & endpoints
 # ---------------------------------------------------------------------------
 
@@ -213,28 +243,101 @@ def post_card_comment(
 
 
 # ---------------------------------------------------------------------------
-# Board data models & endpoints
+# Card duplication
 # ---------------------------------------------------------------------------
 
-class Card(BaseModel):
+@app.post("/api/cards/{card_id}/duplicate", response_model=Card, status_code=201)
+def post_duplicate_card(
+    card_id: str,
+    user: str | None = Query(default=None),
+) -> Card:
+    username = _require_user(user)
+    if not card_accessible_by_user(card_id, username):
+        raise HTTPException(status_code=404, detail="card not found")
+    result = duplicate_card(card_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="card not found")
+    return Card(**{k: v for k, v in result.items() if k != "columnId"})
+
+
+# ---------------------------------------------------------------------------
+# Checklist models & endpoints
+# ---------------------------------------------------------------------------
+
+class ChecklistItem(BaseModel):
     id: str
-    title: str
-    details: str
-    priority: str = "none"
-    dueDate: str | None = None
-    labels: str = ""
+    card_id: str
+    text: str
+    checked: bool
+    order_index: int
+    created_at: str
 
 
-class Column(BaseModel):
-    id: str
-    title: str
-    cardIds: list[str]
+class AddChecklistItemRequest(BaseModel):
+    text: str
 
 
-class BoardData(BaseModel):
-    columns: list[Column]
-    cards: dict[str, Card]
+class UpdateChecklistItemRequest(BaseModel):
+    text: str | None = None
+    checked: bool | None = None
 
+
+@app.get("/api/cards/{card_id}/checklist", response_model=list[ChecklistItem])
+def get_card_checklist(
+    card_id: str,
+    user: str | None = Query(default=None),
+) -> list[ChecklistItem]:
+    username = _require_user(user)
+    if not card_accessible_by_user(card_id, username):
+        raise HTTPException(status_code=404, detail="card not found")
+    return [ChecklistItem(**item) for item in get_checklist(card_id)]
+
+
+@app.post("/api/cards/{card_id}/checklist", response_model=ChecklistItem, status_code=201)
+def post_checklist_item(
+    card_id: str,
+    payload: AddChecklistItemRequest,
+    user: str | None = Query(default=None),
+) -> ChecklistItem:
+    username = _require_user(user)
+    if not card_accessible_by_user(card_id, username):
+        raise HTTPException(status_code=404, detail="card not found")
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    return ChecklistItem(**add_checklist_item(card_id, text))
+
+
+@app.patch("/api/checklist/{item_id}", response_model=ChecklistItem)
+def patch_checklist_item(
+    item_id: str,
+    payload: UpdateChecklistItemRequest,
+    user: str | None = Query(default=None),
+) -> ChecklistItem:
+    _require_user(user)
+    result = update_checklist_item(
+        item_id,
+        payload.text,
+        payload.checked,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="checklist item not found")
+    return ChecklistItem(**result)
+
+
+@app.delete("/api/checklist/{item_id}", status_code=204)
+def del_checklist_item(
+    item_id: str,
+    user: str | None = Query(default=None),
+) -> None:
+    _require_user(user)
+    if not delete_checklist_item(item_id):
+        raise HTTPException(status_code=404, detail="checklist item not found")
+
+
+# ---------------------------------------------------------------------------
+# Board data endpoints
+# ---------------------------------------------------------------------------
 
 class ChatHistoryMessage(BaseModel):
     role: Literal["user", "assistant"]
@@ -392,6 +495,83 @@ def _parse_structured_assistant_response(raw_text: str) -> StructuredAssistantRe
         return StructuredAssistantResponse.model_validate(payload)
     except ValidationError as exc:
         raise ValueError(f"structured output schema validation failed: {exc}") from exc
+
+
+class BoardStats(BaseModel):
+    board_id: str
+    total_cards: int
+    cards_per_column: dict[str, int]
+    overdue_cards: int
+    high_priority_cards: int
+
+
+@app.get("/api/boards/{board_id}/stats", response_model=BoardStats)
+def get_board_stats(
+    board_id: str,
+    user: str | None = Query(default=None),
+) -> BoardStats:
+    username = _require_user(user)
+    _require_board_access(board_id, username)
+    board = BoardData(**load_board(board_id))
+    today = __import__("datetime").date.today().isoformat()
+    total = len(board.cards)
+    cards_per_col = {col.title: len(col.cardIds) for col in board.columns}
+    overdue = sum(
+        1 for c in board.cards.values()
+        if c.dueDate and c.dueDate < today
+    )
+    high_pri = sum(1 for c in board.cards.values() if c.priority == "high")
+    return BoardStats(
+        board_id=board_id,
+        total_cards=total,
+        cards_per_column=cards_per_col,
+        overdue_cards=overdue,
+        high_priority_cards=high_pri,
+    )
+
+
+@app.get("/api/boards/{board_id}/export")
+def export_board(
+    board_id: str,
+    user: str | None = Query(default=None),
+) -> dict:
+    username = _require_user(user)
+    _require_board_access(board_id, username)
+    boards = list_boards(username)
+    board_meta = next((b for b in boards if b["id"] == board_id), None)
+    board = load_board(board_id)
+    return {
+        "board_id": board_id,
+        "title": board_meta["title"] if board_meta else "Board",
+        "exported_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "data": board,
+    }
+
+
+@app.get("/api/board/search")
+def search_board(
+    q: str = Query(default=""),
+    user: str | None = Query(default=None),
+    board_id: str | None = Query(default=None),
+) -> dict:
+    username = _require_user(user)
+    if not q.strip():
+        raise HTTPException(status_code=400, detail="q is required")
+    if board_id:
+        _require_board_access(board_id, username)
+        bid = board_id
+    else:
+        bid = get_or_create_board(username)
+    board = BoardData(**load_board(bid))
+    q_lower = q.strip().lower()
+    matched = [
+        card.model_dump()
+        for card in board.cards.values()
+        if q_lower in card.title.lower()
+        or q_lower in card.details.lower()
+        or q_lower in card.labels.lower()
+    ]
+    return {"query": q, "results": matched, "count": len(matched)}
 
 
 @app.post("/api/chat", response_model=ChatResponse)

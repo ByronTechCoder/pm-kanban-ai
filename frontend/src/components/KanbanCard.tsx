@@ -17,9 +17,10 @@ type KanbanCardProps = {
   username: string;
   onDelete: (cardId: string) => void;
   onEdit: (cardId: string, updates: Partial<Card>) => void;
+  onDuplicate: (cardId: string) => void;
 };
 
-export const KanbanCard = ({ card, username, onDelete, onEdit }: KanbanCardProps) => {
+export const KanbanCard = ({ card, username, onDelete, onEdit, onDuplicate }: KanbanCardProps) => {
   const [showEdit, setShowEdit] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: card.id });
@@ -32,6 +33,9 @@ export const KanbanCard = ({ card, username, onDelete, onEdit }: KanbanCardProps
   const priorityClass = PRIORITY_COLORS[card.priority ?? "none"];
   const hasLabels = card.labels && card.labels.trim().length > 0;
   const labelList = hasLabels ? card.labels.split(",").map((l) => l.trim()).filter(Boolean) : [];
+  const isOverdue = card.dueDate
+    ? new Date(card.dueDate) < new Date(new Date().toDateString())
+    : false;
 
   return (
     <>
@@ -39,8 +43,9 @@ export const KanbanCard = ({ card, username, onDelete, onEdit }: KanbanCardProps
         ref={setNodeRef}
         style={style}
         className={clsx(
-          "group relative rounded-2xl border border-transparent bg-white px-4 py-3 shadow-[0_12px_24px_rgba(3,33,71,0.08)]",
+          "group relative rounded-2xl border bg-white px-4 py-3 shadow-[0_12px_24px_rgba(3,33,71,0.08)]",
           "transition-all duration-150",
+          isOverdue ? "border-red-200" : "border-transparent",
           isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]"
         )}
         {...attributes}
@@ -56,6 +61,17 @@ export const KanbanCard = ({ card, username, onDelete, onEdit }: KanbanCardProps
           >
             <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDuplicate(card.id); }}
+            className="flex h-6 w-6 items-center justify-center rounded-full text-[var(--gray-text)] transition hover:bg-[var(--surface)] hover:text-[var(--primary-blue)]"
+            aria-label={`Duplicate ${card.title}`}
+            title="Duplicate card"
+          >
+            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
           </button>
           <button
@@ -84,11 +100,12 @@ export const KanbanCard = ({ card, username, onDelete, onEdit }: KanbanCardProps
         </p>
 
         {card.dueDate ? (
-          <p className="mt-2 flex items-center gap-1 text-[10px] text-[var(--gray-text)]">
+          <p className={clsx("mt-2 flex items-center gap-1 text-[10px]", isOverdue ? "font-semibold text-red-500" : "text-[var(--gray-text)]")}>
             <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             {card.dueDate}
+            {isOverdue ? <span className="ml-1">· Overdue</span> : null}
           </p>
         ) : null}
 

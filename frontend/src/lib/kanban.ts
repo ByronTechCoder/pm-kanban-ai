@@ -12,6 +12,7 @@ export type Card = {
 export type Column = {
   id: string;
   title: string;
+  wipLimit: number | null;
   cardIds: string[];
 };
 
@@ -22,15 +23,16 @@ export type BoardData = {
 
 export const initialData: BoardData = {
   columns: [
-    { id: "col-backlog", title: "Backlog", cardIds: ["card-1", "card-2"] },
-    { id: "col-discovery", title: "Discovery", cardIds: ["card-3"] },
+    { id: "col-backlog", title: "Backlog", wipLimit: null, cardIds: ["card-1", "card-2"] },
+    { id: "col-discovery", title: "Discovery", wipLimit: null, cardIds: ["card-3"] },
     {
       id: "col-progress",
       title: "In Progress",
+      wipLimit: null,
       cardIds: ["card-4", "card-5"],
     },
-    { id: "col-review", title: "Review", cardIds: ["card-6"] },
-    { id: "col-done", title: "Done", cardIds: ["card-7", "card-8"] },
+    { id: "col-review", title: "Review", wipLimit: null, cardIds: ["card-6"] },
+    { id: "col-done", title: "Done", wipLimit: null, cardIds: ["card-7", "card-8"] },
   ],
   cards: {
     "card-1": {

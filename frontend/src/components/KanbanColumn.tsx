@@ -16,6 +16,8 @@ type KanbanColumnProps = {
   onDeleteCard: (columnId: string, cardId: string) => void;
   onEditCard: (cardId: string, updates: Partial<Card>) => void;
   onDeleteColumn: (columnId: string) => void;
+  onDuplicateCard: (cardId: string) => void;
+  onSetWipLimit: (columnId: string, limit: number | null) => void;
 };
 
 export const KanbanColumn = ({
@@ -27,6 +29,8 @@ export const KanbanColumn = ({
   onDeleteCard,
   onEditCard,
   onDeleteColumn,
+  onDuplicateCard,
+  onSetWipLimit,
 }: KanbanColumnProps) => {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: column.id });
   const {
@@ -38,6 +42,10 @@ export const KanbanColumn = ({
     isDragging,
   } = useSortable({ id: column.id });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showWipInput, setShowWipInput] = useState(false);
+  const [wipInputValue, setWipInputValue] = useState(
+    column.wipLimit != null ? String(column.wipLimit) : ""
+  );
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -49,14 +57,28 @@ export const KanbanColumn = ({
     setSortableRef(node);
   };
 
+  const isOverWip = column.wipLimit != null && cards.length > column.wipLimit;
+
+  const handleWipSave = () => {
+    const val = wipInputValue.trim();
+    if (val === "") {
+      onSetWipLimit(column.id, null);
+    } else {
+      const n = parseInt(val, 10);
+      if (!isNaN(n) && n > 0) onSetWipLimit(column.id, n);
+    }
+    setShowWipInput(false);
+  };
+
   return (
     <section
       ref={setNodeRef}
       style={style}
       className={clsx(
-        "flex min-h-[460px] w-[260px] flex-shrink-0 flex-col rounded-2xl border border-[var(--stroke)] bg-[var(--surface-strong)] p-3 shadow-[var(--shadow)] transition",
+        "flex min-h-[460px] w-[260px] flex-shrink-0 flex-col rounded-2xl border bg-[var(--surface-strong)] p-3 shadow-[var(--shadow)] transition",
         isOver && "ring-2 ring-[var(--accent-yellow)]",
-        isDragging && "opacity-50"
+        isDragging && "opacity-50",
+        isOverWip ? "border-red-400" : "border-[var(--stroke)]"
       )}
       data-testid={`column-${column.id}`}
     >
@@ -73,9 +95,37 @@ export const KanbanColumn = ({
           className="min-w-0 flex-1 bg-transparent font-display text-sm font-semibold text-[var(--navy-dark)] outline-none"
           aria-label="Column title"
         />
-        <span className="flex-shrink-0 rounded-full bg-[var(--surface)] px-2 py-0.5 text-[10px] font-semibold text-[var(--gray-text)]">
-          {cards.length}
-        </span>
+        {/* Card count / WIP badge */}
+        {showWipInput ? (
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min={1}
+              value={wipInputValue}
+              onChange={(e) => setWipInputValue(e.target.value)}
+              placeholder="∞"
+              className="w-14 rounded border border-[var(--stroke)] px-1.5 py-0.5 text-[10px] text-[var(--navy-dark)] outline-none"
+              onKeyDown={(e) => { if (e.key === "Enter") handleWipSave(); if (e.key === "Escape") setShowWipInput(false); }}
+              autoFocus
+            />
+            <button type="button" onClick={handleWipSave} className="text-[10px] font-semibold text-[var(--primary-blue)]">OK</button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => { setWipInputValue(column.wipLimit != null ? String(column.wipLimit) : ""); setShowWipInput(true); }}
+            title={column.wipLimit != null ? `WIP limit: ${column.wipLimit}` : "Set WIP limit"}
+            className={clsx(
+              "flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold transition",
+              isOverWip
+                ? "bg-red-100 text-red-500"
+                : "bg-[var(--surface)] text-[var(--gray-text)] hover:bg-[var(--stroke)]"
+            )}
+          >
+            {cards.length}{column.wipLimit != null ? `/${column.wipLimit}` : ""}
+            {isOverWip && " ⚠"}
+          </button>
+        )}
         {showDeleteConfirm ? (
           <div className="flex items-center gap-1">
             <button
@@ -115,6 +165,7 @@ export const KanbanColumn = ({
               username={username}
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
               onEdit={(cardId, updates) => onEditCard(cardId, updates)}
+              onDuplicate={(cardId) => onDuplicateCard(cardId)}
             />
           ))}
         </SortableContext>

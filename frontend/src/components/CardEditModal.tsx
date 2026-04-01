@@ -18,6 +18,15 @@ type Comment = {
   created_at: string;
 };
 
+type ChecklistItem = {
+  id: string;
+  card_id: string;
+  text: string;
+  checked: boolean;
+  order_index: number;
+  created_at: string;
+};
+
 export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModalProps) => {
   const [title, setTitle] = useState(card.title);
   const [details, setDetails] = useState(card.details);
@@ -27,7 +36,9 @@ export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModal
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [isPostingComment, setIsPostingComment] = useState(false);
-  const [activeTab, setActiveTab] = useState<"details" | "comments">("details");
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [newChecklistText, setNewChecklistText] = useState("");
+  const [activeTab, setActiveTab] = useState<"details" | "comments" | "checklist">("details");
 
   const loadComments = useCallback(async () => {
     try {
@@ -42,9 +53,23 @@ export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModal
     }
   }, [card.id, username]);
 
+  const loadChecklist = useCallback(async () => {
+    try {
+      const resp = await fetch(
+        `/api/cards/${card.id}/checklist?user=${encodeURIComponent(username)}`
+      );
+      if (resp.ok) {
+        setChecklist((await resp.json()) as ChecklistItem[]);
+      }
+    } catch {
+      // ignore
+    }
+  }, [card.id, username]);
+
   useEffect(() => {
     void loadComments();
-  }, [loadComments]);
+    void loadChecklist();
+  }, [loadComments, loadChecklist]);
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -78,6 +103,43 @@ export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModal
     } finally {
       setIsPostingComment(false);
     }
+  };
+
+  const handleAddChecklistItem = async () => {
+    const text = newChecklistText.trim();
+    if (!text) return;
+    const resp = await fetch(
+      `/api/cards/${card.id}/checklist?user=${encodeURIComponent(username)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      }
+    );
+    if (resp.ok) {
+      setNewChecklistText("");
+      void loadChecklist();
+    }
+  };
+
+  const handleToggleItem = async (item: ChecklistItem) => {
+    const resp = await fetch(
+      `/api/checklist/${item.id}?user=${encodeURIComponent(username)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checked: !item.checked }),
+      }
+    );
+    if (resp.ok) void loadChecklist();
+  };
+
+  const handleDeleteChecklistItem = async (itemId: string) => {
+    await fetch(
+      `/api/checklist/${itemId}?user=${encodeURIComponent(username)}`,
+      { method: "DELETE" }
+    );
+    void loadChecklist();
   };
 
   return (
@@ -129,6 +191,22 @@ export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModal
             {comments.length > 0 ? (
               <span className="ml-1.5 rounded-full bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--gray-text)]">
                 {comments.length}
+              </span>
+            ) : null}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("checklist")}
+            className={`px-3 py-2 text-xs font-semibold uppercase tracking-[0.15em] transition border-b-2 -mb-px ${
+              activeTab === "checklist"
+                ? "border-[var(--primary-blue)] text-[var(--primary-blue)]"
+                : "border-transparent text-[var(--gray-text)] hover:text-[var(--navy-dark)]"
+            }`}
+          >
+            Checklist
+            {checklist.length > 0 ? (
+              <span className="ml-1.5 rounded-full bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--gray-text)]">
+                {checklist.filter((i) => i.checked).length}/{checklist.length}
               </span>
             ) : null}
           </button>
@@ -212,7 +290,7 @@ export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModal
                 </button>
               </div>
             </form>
-          ) : (
+          ) : activeTab === "comments" ? (
             <div className="flex flex-col gap-4">
               <div className="max-h-64 space-y-3 overflow-y-auto">
                 {comments.length === 0 ? (
@@ -248,6 +326,64 @@ export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModal
                   className="rounded-xl bg-[var(--primary-blue)] px-4 py-2 text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-50"
                 >
                   Post
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {checklist.length > 0 && (
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface)]">
+                  <div
+                    className="h-full rounded-full bg-green-500 transition-all"
+                    style={{ width: `${Math.round((checklist.filter((i) => i.checked).length / checklist.length) * 100)}%` }}
+                  />
+                </div>
+              )}
+              <div className="max-h-56 space-y-2 overflow-y-auto">
+                {checklist.length === 0 ? (
+                  <p className="text-sm text-[var(--gray-text)]">No checklist items yet.</p>
+                ) : (
+                  checklist.map((item) => (
+                    <div key={item.id} className="flex items-center gap-2 group">
+                      <input
+                        type="checkbox"
+                        checked={item.checked}
+                        onChange={() => void handleToggleItem(item)}
+                        className="h-4 w-4 cursor-pointer rounded accent-green-500"
+                      />
+                      <span className={`flex-1 text-sm ${item.checked ? "line-through text-[var(--gray-text)]" : "text-[var(--navy-dark)]"}`}>
+                        {item.text}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteChecklistItem(item.id)}
+                        className="invisible rounded p-0.5 text-[var(--gray-text)] hover:text-red-500 group-hover:visible"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={newChecklistText}
+                  onChange={(e) => setNewChecklistText(e.target.value)}
+                  placeholder="Add an item..."
+                  className="min-w-0 flex-1 rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleAddChecklistItem();
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={!newChecklistText.trim()}
+                  onClick={() => void handleAddChecklistItem()}
+                  className="rounded-xl bg-[var(--primary-blue)] px-4 py-2 text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-50"
+                >
+                  Add
                 </button>
               </div>
             </div>

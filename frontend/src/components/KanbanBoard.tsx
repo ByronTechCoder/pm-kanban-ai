@@ -54,6 +54,11 @@ export const KanbanBoard = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterPriority, setFilterPriority] = useState<string>("all");
   const [filterLabel, setFilterLabel] = useState<string>("");
+  const [boardStats, setBoardStats] = useState<{
+    total_cards: number;
+    overdue_cards: number;
+    high_priority_cards: number;
+  } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -110,6 +115,20 @@ export const KanbanBoard = ({
     return Array.from(labelSet).sort();
   }, [board.cards]);
 
+  const loadStats = useCallback(async (boardId: string) => {
+    if (!username || !boardId) return;
+    try {
+      const resp = await fetch(
+        `/api/boards/${boardId}/stats?user=${encodeURIComponent(username)}`
+      );
+      if (resp.ok) {
+        setBoardStats(await resp.json());
+      }
+    } catch {
+      // ignore
+    }
+  }, [username]);
+
   // Load boards list
   const loadBoards = useCallback(async () => {
     try {
@@ -126,6 +145,10 @@ export const KanbanBoard = ({
   useEffect(() => {
     void loadBoards();
   }, [loadBoards]);
+
+  useEffect(() => {
+    if (activeBoardId) void loadStats(activeBoardId);
+  }, [activeBoardId, loadStats, board]);
 
   useEffect(() => {
     if (onBoardChange) {
@@ -225,7 +248,7 @@ export const KanbanBoard = ({
     const id = createId("col");
     setBoard((prev) => ({
       ...prev,
-      columns: [...prev.columns, { id, title, cardIds: [] }],
+      columns: [...prev.columns, { id, title, wipLimit: null, cardIds: [] }],
     }));
     setNewColumnTitle("");
     setAddingColumn(false);
@@ -243,6 +266,49 @@ export const KanbanBoard = ({
         columns: prev.columns.filter((c) => c.id !== columnId),
       };
     });
+  };
+
+  const handleDuplicateCard = async (cardId: string) => {
+    try {
+      const resp = await fetch(
+        `/api/cards/${cardId}/duplicate?user=${encodeURIComponent(username)}`,
+        { method: "POST" }
+      );
+      if (resp.ok) {
+        const newCard = (await resp.json()) as { id: string; title: string; details: string; priority: string; dueDate: string | null; labels: string };
+        // Reload board to get accurate ordering
+        const boardResp = await fetch(
+          `/api/board?user=${encodeURIComponent(username)}&board_id=${encodeURIComponent(activeBoardId ?? "")}`
+        );
+        if (boardResp.ok) {
+          setBoard(await boardResp.json() as typeof board);
+        } else {
+          // Fallback: add card locally to same column
+          setBoard((prev) => {
+            const col = prev.columns.find((c) => c.cardIds.includes(cardId));
+            if (!col) return prev;
+            return {
+              ...prev,
+              columns: prev.columns.map((c) =>
+                c.id === col.id ? { ...c, cardIds: [...c.cardIds, newCard.id] } : c
+              ),
+              cards: { ...prev.cards, [newCard.id]: newCard as typeof prev.cards[string] },
+            };
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSetWipLimit = (columnId: string, limit: number | null) => {
+    setBoard((prev) => ({
+      ...prev,
+      columns: prev.columns.map((c) =>
+        c.id === columnId ? { ...c, wipLimit: limit } : c
+      ),
+    }));
   };
 
   const handleCreateBoard = async () => {
@@ -427,6 +493,39 @@ export const KanbanBoard = ({
           </div>
         </header>
 
+        {/* Board statistics bar */}
+        {boardStats && activeBoardId ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--stroke)] bg-white/80 px-5 py-3 text-xs backdrop-blur">
+            <span className="font-semibold text-[var(--navy-dark)]">
+              {boardStats.total_cards} cards
+            </span>
+            {boardStats.overdue_cards > 0 ? (
+              <span className="flex items-center gap-1 font-semibold text-red-500">
+                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                {boardStats.overdue_cards} overdue
+              </span>
+            ) : (
+              <span className="text-green-600 font-semibold">No overdue cards</span>
+            )}
+            {boardStats.high_priority_cards > 0 ? (
+              <span className="font-semibold text-red-600">
+                {boardStats.high_priority_cards} high priority
+              </span>
+            ) : null}
+            <div className="ml-auto">
+              <a
+                href={`/api/boards/${activeBoardId}/export?user=${encodeURIComponent(username)}`}
+                download={`board-${activeBoardId}.json`}
+                className="rounded-xl border border-[var(--stroke)] px-3 py-1.5 font-semibold text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+              >
+                Export JSON
+              </a>
+            </div>
+          </div>
+        ) : null}
+
         {/* Click outside to close board menu */}
         {showBoardMenu ? (
           <div
@@ -454,6 +553,8 @@ export const KanbanBoard = ({
                   onDeleteCard={handleDeleteCard}
                   onEditCard={handleEditCard}
                   onDeleteColumn={handleDeleteColumn}
+                  onDuplicateCard={handleDuplicateCard}
+                  onSetWipLimit={handleSetWipLimit}
                 />
               ))}
             </SortableContext>
