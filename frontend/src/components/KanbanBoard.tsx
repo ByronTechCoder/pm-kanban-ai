@@ -448,6 +448,21 @@ export const KanbanBoard = ({
     }));
   };
 
+  const handleMoveCard = (cardId: string, targetColumnId: string) => {
+    setBoard((prev) => {
+      const sourceCol = prev.columns.find((c) => c.cardIds.includes(cardId));
+      if (!sourceCol || sourceCol.id === targetColumnId) return prev;
+      return {
+        ...prev,
+        columns: prev.columns.map((c) => {
+          if (c.id === sourceCol.id) return { ...c, cardIds: c.cardIds.filter((id) => id !== cardId) };
+          if (c.id === targetColumnId) return { ...c, cardIds: [...c.cardIds, cardId] };
+          return c;
+        }),
+      };
+    });
+  };
+
   const handleBulkArchive = async (columnId: string) => {
     if (!activeBoardId) return;
     try {
@@ -925,6 +940,7 @@ export const KanbanBoard = ({
                   cards={column.cardIds.map((cardId) => board.cards[cardId]).filter(Boolean)}
                   username={username}
                   labelPresets={labelPresets}
+                  allColumns={board.columns.map((c) => ({ id: c.id, title: c.title }))}
                   onRename={handleRenameColumn}
                   onAddCard={handleAddCard}
                   onDeleteCard={handleDeleteCard}
@@ -933,6 +949,7 @@ export const KanbanBoard = ({
                   onDuplicateCard={handleDuplicateCard}
                   onArchiveCard={handleArchiveCard}
                   onBulkArchive={handleBulkArchive}
+                  onMoveCard={handleMoveCard}
                   onSetWipLimit={handleSetWipLimit}
                   onSetColor={handleSetColor}
                 />

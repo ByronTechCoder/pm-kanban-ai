@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
-import type { Card, Priority } from "@/lib/kanban";
+import type { Card, Column, Priority } from "@/lib/kanban";
 import { CardEditModal } from "@/components/CardEditModal";
 
 const PRIORITY_COLORS: Record<Priority, string> = {
@@ -16,14 +16,18 @@ type KanbanCardProps = {
   card: Card;
   username: string;
   labelPresets?: string[];
+  otherColumns?: Pick<Column, "id" | "title">[];
   onDelete: (cardId: string) => void;
   onEdit: (cardId: string, updates: Partial<Card>) => void;
   onDuplicate: (cardId: string) => void;
   onArchive: (cardId: string) => void;
+  onMove?: (cardId: string, targetColumnId: string) => void;
 };
 
-export const KanbanCard = ({ card, username, labelPresets = [], onDelete, onEdit, onDuplicate, onArchive }: KanbanCardProps) => {
+export const KanbanCard = ({ card, username, labelPresets = [], otherColumns = [], onDelete, onEdit, onDuplicate, onArchive, onMove }: KanbanCardProps) => {
   const [showEdit, setShowEdit] = useState(false);
+  const [showMoveMenu, setShowMoveMenu] = useState(false);
+  const moveMenuRef = useRef<HTMLDivElement>(null);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: card.id });
 
@@ -76,6 +80,36 @@ export const KanbanCard = ({ card, username, labelPresets = [], onDelete, onEdit
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
           </button>
+          {otherColumns.length > 0 && onMove ? (
+            <div ref={moveMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowMoveMenu((v) => !v); }}
+                className="flex h-6 w-6 items-center justify-center rounded-full text-[var(--gray-text)] transition hover:bg-[var(--surface)] hover:text-green-600"
+                aria-label={`Move ${card.title}`}
+                title="Move to column"
+              >
+                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+              {showMoveMenu ? (
+                <div className="absolute right-0 top-7 z-30 min-w-[140px] rounded-xl border border-[var(--stroke)] bg-white py-1 shadow-lg">
+                  <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--gray-text)]">Move to</p>
+                  {otherColumns.map((col) => (
+                    <button
+                      key={col.id}
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onMove(card.id, col.id); setShowMoveMenu(false); }}
+                      className="w-full px-3 py-1.5 text-left text-xs text-[var(--navy-dark)] transition hover:bg-[var(--surface)]"
+                    >
+                      {col.title}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onArchive(card.id); }}

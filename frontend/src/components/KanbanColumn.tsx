@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Card, Column } from "@/lib/kanban";
+import type { Card, Column, BoardData } from "@/lib/kanban";
 import { KanbanCard } from "@/components/KanbanCard";
 import { NewCardForm } from "@/components/NewCardForm";
 
@@ -12,6 +12,7 @@ type KanbanColumnProps = {
   cards: Card[];
   username: string;
   labelPresets?: string[];
+  allColumns?: Pick<BoardData["columns"][number], "id" | "title">[];
   onRename: (columnId: string, title: string) => void;
   onAddCard: (columnId: string, title: string, details: string) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
@@ -20,6 +21,7 @@ type KanbanColumnProps = {
   onDuplicateCard: (cardId: string) => void;
   onArchiveCard: (cardId: string) => void;
   onBulkArchive: (columnId: string) => void;
+  onMoveCard: (cardId: string, targetColumnId: string) => void;
   onSetWipLimit: (columnId: string, limit: number | null) => void;
   onSetColor: (columnId: string, color: string | null) => void;
 };
@@ -29,6 +31,7 @@ export const KanbanColumn = ({
   cards,
   username,
   labelPresets = [],
+  allColumns = [],
   onRename,
   onAddCard,
   onDeleteCard,
@@ -37,6 +40,7 @@ export const KanbanColumn = ({
   onDuplicateCard,
   onArchiveCard,
   onBulkArchive,
+  onMoveCard,
   onSetWipLimit,
   onSetColor,
 }: KanbanColumnProps) => {
@@ -222,10 +226,12 @@ export const KanbanColumn = ({
               card={card}
               username={username}
               labelPresets={labelPresets}
+              otherColumns={allColumns.filter((c) => c.id !== column.id)}
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
               onEdit={(cardId, updates) => onEditCard(cardId, updates)}
               onDuplicate={(cardId) => onDuplicateCard(cardId)}
               onArchive={(cardId) => onArchiveCard(cardId)}
+              onMove={(cardId, targetColId) => onMoveCard(cardId, targetColId)}
             />
           ))}
         </SortableContext>
