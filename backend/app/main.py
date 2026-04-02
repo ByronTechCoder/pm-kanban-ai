@@ -38,6 +38,7 @@ from .db import (
     rename_board,
     replace_board,
     restore_card,
+    search_cards,
     set_board_label_presets,
     update_checklist_item,
 )
@@ -722,6 +723,34 @@ def get_board_stats(
         total_estimate=sum(c.estimate for c in estimated),
         estimated_cards=len(estimated),
     )
+
+
+class CardSearchResult(BaseModel):
+    id: str
+    title: str
+    details: str
+    priority: str = "none"
+    dueDate: str | None = None
+    labels: str = ""
+    estimate: int | None = None
+    columnId: str
+    columnTitle: str
+
+
+@app.get("/api/boards/{board_id}/search", response_model=list[CardSearchResult])
+def search_board_cards(
+    board_id: str,
+    user: str | None = Query(default=None),
+    q: str = Query(default=""),
+    priority: str | None = Query(default=None),
+    label: str | None = Query(default=None),
+    overdue: bool = Query(default=False),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[CardSearchResult]:
+    username = _require_user(user)
+    _require_board_access(board_id, username)
+    results = search_cards(board_id, query=q, priority=priority, label=label, overdue_only=overdue, limit=limit)
+    return [CardSearchResult(**r) for r in results]
 
 
 @app.get("/api/boards/{board_id}/export")

@@ -738,3 +738,75 @@ def bulk_archive_column(column_id: str) -> int:
         )
         conn.commit()
         return cur.rowcount
+
+
+# ---------------------------------------------------------------------------
+# Card search
+# ---------------------------------------------------------------------------
+
+def search_cards(
+    board_id: str,
+    query: str = "",
+    priority: str | None = None,
+    label: str | None = None,
+    overdue_only: bool = False,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Search non-archived cards in a board. Returns cards with column info."""
+    from datetime import date
+
+    conditions = [
+        "ca.archived = 0",
+        "co.board_id = ?",
+    ]
+    params: list[Any] = [board_id]
+
+    if query:
+        conditions.append("(ca.title LIKE ? OR ca.details LIKE ? OR ca.labels LIKE ?)")
+        like = f"%{query}%"
+        params.extend([like, like, like])
+
+    if priority:
+        conditions.append("ca.priority = ?")
+        params.append(priority)
+
+    if label:
+        conditions.append("(',' || ca.labels || ',' LIKE ?)")
+        params.append(f"%,{label.strip()},%")
+
+    if overdue_only:
+        today = date.today().isoformat()
+        conditions.append("ca.due_date IS NOT NULL AND ca.due_date < ?")
+        params.append(today)
+
+    where_clause = " AND ".join(conditions)
+    params.append(limit)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT ca.id, ca.title, ca.details, ca.priority, ca.due_date,
+                   ca.labels, ca.estimate, co.id as column_id, co.title as column_title
+            FROM cards ca
+            JOIN columns co ON ca.column_id = co.id
+            WHERE {where_clause}
+            ORDER BY ca.order_index
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+
+    return [
+        {
+            "id": row["id"],
+            "title": row["title"],
+            "details": row["details"],
+            "priority": row["priority"] or "none",
+            "dueDate": row["due_date"],
+            "labels": row["labels"] or "",
+            "estimate": row["estimate"],
+            "columnId": row["column_id"],
+            "columnTitle": row["column_title"],
+        }
+        for row in rows
+    ]
