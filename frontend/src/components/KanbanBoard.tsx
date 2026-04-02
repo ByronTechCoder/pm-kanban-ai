@@ -65,6 +65,8 @@ export const KanbanBoard = ({
     estimated_cards: number;
   } | null>(null);
   const [labelPresets, setLabelPresets] = useState<string[]>([]);
+  const [showBoardSettings, setShowBoardSettings] = useState(false);
+  const [settingsPresetsInput, setSettingsPresetsInput] = useState("");
   const [showArchiveView, setShowArchiveView] = useState(false);
   const [archivedCards, setArchivedCards] = useState<Array<{
     id: string; title: string; details: string; priority: string;
@@ -500,6 +502,49 @@ export const KanbanBoard = ({
     }
   };
 
+  const handleImportBoard = async (file: File) => {
+    if (!activeBoardId) return;
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text) as unknown;
+      const resp = await fetch(
+        `/api/boards/${activeBoardId}/import?user=${encodeURIComponent(username)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(json),
+        }
+      );
+      if (resp.ok) {
+        const imported = await resp.json() as typeof board;
+        setBoard(imported);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSaveLabelPresets = async (presetsStr: string) => {
+    if (!activeBoardId) return;
+    const presets = presetsStr.split(",").map((l) => l.trim()).filter(Boolean);
+    try {
+      const resp = await fetch(
+        `/api/boards/${activeBoardId}/labels?user=${encodeURIComponent(username)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ labels: presets }),
+        }
+      );
+      if (resp.ok) {
+        setLabelPresets(presets);
+        setShowBoardSettings(false);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const handleRenameBoard = async (boardId: string, title: string) => {
     const trimmed = title.trim();
     if (!trimmed) return;
@@ -730,6 +775,14 @@ export const KanbanBoard = ({
             <div className="ml-auto flex gap-2">
               <button
                 type="button"
+                onClick={() => { setSettingsPresetsInput(labelPresets.join(", ")); setShowBoardSettings(true); }}
+                className="rounded-xl border border-[var(--stroke)] px-3 py-1.5 font-semibold text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+                title="Board settings"
+              >
+                Settings
+              </button>
+              <button
+                type="button"
                 onClick={() => void handleToggleArchiveView()}
                 className="rounded-xl border border-[var(--stroke)] px-3 py-1.5 font-semibold text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
               >
@@ -740,8 +793,87 @@ export const KanbanBoard = ({
                 download={`board-${activeBoardId}.json`}
                 className="rounded-xl border border-[var(--stroke)] px-3 py-1.5 font-semibold text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
               >
-                Export JSON
+                Export
               </a>
+              <label className="cursor-pointer rounded-xl border border-[var(--stroke)] px-3 py-1.5 font-semibold text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]" title="Import board JSON">
+                Import
+                <input
+                  type="file"
+                  accept=".json"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleImportBoard(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Board settings modal */}
+        {showBoardSettings ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+            onClick={() => setShowBoardSettings(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-[24px] border border-[var(--stroke)] bg-white p-6 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="font-display text-lg font-semibold text-[var(--navy-dark)]">Board Settings</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowBoardSettings(false)}
+                  className="rounded-full p-1.5 text-[var(--gray-text)] transition hover:bg-[var(--surface)]"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="space-y-4">
+                <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                  Label Presets
+                  <textarea
+                    value={settingsPresetsInput}
+                    onChange={(e) => setSettingsPresetsInput(e.target.value)}
+                    rows={3}
+                    placeholder="bug, feature, urgent, design"
+                    className="mt-2 w-full resize-none rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+                  />
+                  <span className="mt-1 block text-[10px] normal-case font-normal text-[var(--gray-text)]">
+                    Comma-separated. These appear as quick-select chips in the card editor.
+                  </span>
+                </label>
+                {settingsPresetsInput.trim() ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {settingsPresetsInput.split(",").map((l) => l.trim()).filter(Boolean).map((label) => (
+                      <span key={label} className="rounded-full bg-[var(--surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--gray-text)]">
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveLabelPresets(settingsPresetsInput)}
+                    className="flex-1 rounded-full bg-[var(--secondary-purple)] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:brightness-110"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowBoardSettings(false)}
+                    className="flex-1 rounded-full border border-[var(--stroke)] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         ) : null}
