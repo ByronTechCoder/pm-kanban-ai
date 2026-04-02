@@ -767,7 +767,7 @@ export const KanbanBoard = ({
         {boardStats && activeBoardId ? (
           <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--stroke)] bg-white/80 px-5 py-3 text-xs backdrop-blur">
             <span className="font-semibold text-[var(--navy-dark)]">
-              {boardStats.total_cards} cards
+              {boardStats.total_cards} card{boardStats.total_cards !== 1 ? "s" : ""}
             </span>
             {boardStats.overdue_cards > 0 ? (
               <span className="flex items-center gap-1 font-semibold text-red-500">

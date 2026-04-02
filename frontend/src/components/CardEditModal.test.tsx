@@ -75,4 +75,52 @@ describe("CardEditModal", () => {
     await userEvent.click(backdrop);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("renders label preset chips when provided", () => {
+    render(
+      <CardEditModal
+        card={{ ...BASE_CARD, labels: "" }}
+        labelPresets={["bug", "feature", "urgent"]}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+        username="alice"
+      />
+    );
+    expect(screen.getByRole("button", { name: "bug" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "feature" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "urgent" })).toBeInTheDocument();
+  });
+
+  it("clicking a preset label adds it to the labels field", async () => {
+    const onSave = vi.fn();
+    render(
+      <CardEditModal
+        card={{ ...BASE_CARD, labels: "" }}
+        labelPresets={["bug", "feature"]}
+        onSave={onSave}
+        onClose={vi.fn()}
+        username="alice"
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: "bug" }));
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ labels: "bug" }));
+  });
+
+  it("clicking an active preset label removes it", async () => {
+    const onSave = vi.fn();
+    render(
+      <CardEditModal
+        card={{ ...BASE_CARD, labels: "bug" }}
+        labelPresets={["bug", "feature"]}
+        onSave={onSave}
+        onClose={vi.fn()}
+        username="alice"
+      />
+    );
+    // "bug" is already active — clicking should remove it
+    await userEvent.click(screen.getByRole("button", { name: "bug" }));
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ labels: "" }));
+  });
 });
