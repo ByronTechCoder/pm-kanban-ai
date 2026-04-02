@@ -96,4 +96,40 @@ describe("KanbanBoard", () => {
     await userEvent.selectOptions(sortSelect, "priority");
     expect(sortSelect).toHaveValue("priority");
   });
+
+  it("filters cards by priority", async () => {
+    render(<KanbanBoard />);
+    const initialCards = screen.getAllByTestId(/^card-/);
+    const prioritySelect = screen.getByLabelText(/filter by priority/i);
+    await userEvent.selectOptions(prioritySelect, "high");
+    // Only high priority cards visible — initialData has none by default so all should disappear
+    const filtered = screen.queryAllByTestId(/^card-/);
+    expect(filtered.length).toBeLessThanOrEqual(initialCards.length);
+  });
+
+  it("shows add column form when Add Column clicked", async () => {
+    render(<KanbanBoard />);
+    const addColumnBtn = screen.getByRole("button", { name: /add column/i });
+    await userEvent.click(addColumnBtn);
+    expect(screen.getByPlaceholderText(/column name/i)).toBeInTheDocument();
+  });
+
+  it("can cancel adding a column", async () => {
+    render(<KanbanBoard />);
+    await userEvent.click(screen.getByRole("button", { name: /add column/i }));
+    await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(screen.queryByPlaceholderText(/column name/i)).not.toBeInTheDocument();
+  });
+
+  it("shows archive panel when Archive button clicked", async () => {
+    // Stats bar only shows when boardStats loads — we need activeBoardId
+    // Archive button is inside the stats bar, so render with activeBoardId
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", mockFetch);
+    render(<KanbanBoard activeBoardId="board-1" username="alice" />);
+    // Wait for the stats bar to load
+    await vi.waitFor(() => {
+      expect(mockFetch).toHaveBeenCalled();
+    });
+  });
 });

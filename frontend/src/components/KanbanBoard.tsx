@@ -67,6 +67,11 @@ export const KanbanBoard = ({
   const [labelPresets, setLabelPresets] = useState<string[]>([]);
   const [showBoardSettings, setShowBoardSettings] = useState(false);
   const [settingsPresetsInput, setSettingsPresetsInput] = useState("");
+  const [showActivityLog, setShowActivityLog] = useState(false);
+  const [activityLog, setActivityLog] = useState<Array<{
+    id: string; action: string; entity_type: string; entity_id: string | null;
+    description: string; username: string; created_at: string;
+  }>>([]);
   const [showArchiveView, setShowArchiveView] = useState(false);
   const [archivedCards, setArchivedCards] = useState<Array<{
     id: string; title: string; details: string; priority: string;
@@ -364,6 +369,18 @@ export const KanbanBoard = ({
     } catch {
       // ignore
     }
+  };
+
+  const handleToggleActivityLog = async () => {
+    if (!showActivityLog && activeBoardId) {
+      try {
+        const resp = await fetch(
+          `/api/boards/${activeBoardId}/activity?user=${encodeURIComponent(username)}&limit=50`
+        );
+        if (resp.ok) setActivityLog(await resp.json());
+      } catch { /* ignore */ }
+    }
+    setShowActivityLog((v) => !v);
   };
 
   const handleToggleArchiveView = async () => {
@@ -783,6 +800,13 @@ export const KanbanBoard = ({
               </button>
               <button
                 type="button"
+                onClick={() => void handleToggleActivityLog()}
+                className="rounded-xl border border-[var(--stroke)] px-3 py-1.5 font-semibold text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+              >
+                Activity
+              </button>
+              <button
+                type="button"
                 onClick={() => void handleToggleArchiveView()}
                 className="rounded-xl border border-[var(--stroke)] px-3 py-1.5 font-semibold text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
               >
@@ -1013,6 +1037,55 @@ export const KanbanBoard = ({
                     >
                       Restore
                     </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {/* Activity log panel */}
+        {showActivityLog ? (
+          <div className="mt-6 rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-display text-base font-semibold text-[var(--navy-dark)]">
+                Activity Log
+                <span className="ml-2 rounded-full bg-[var(--surface-strong)] px-2 py-0.5 text-xs font-normal text-[var(--gray-text)]">
+                  {activityLog.length}
+                </span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowActivityLog(false)}
+                className="rounded-full p-1.5 text-[var(--gray-text)] transition hover:bg-[var(--surface-strong)]"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {activityLog.length === 0 ? (
+              <p className="text-sm text-[var(--gray-text)]">No activity yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {activityLog.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex items-start gap-3 rounded-xl border border-[var(--stroke)] bg-white px-4 py-2.5"
+                  >
+                    <span className={`mt-0.5 flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                      entry.action === "bulk_archive" || entry.action === "archive"
+                        ? "bg-amber-100 text-amber-600"
+                        : entry.action === "restore"
+                        ? "bg-green-100 text-green-600"
+                        : "bg-[var(--surface)] text-[var(--gray-text)]"
+                    }`}>
+                      {entry.action}
+                    </span>
+                    <span className="flex-1 text-sm text-[var(--navy-dark)]">{entry.description}</span>
+                    <span className="flex-shrink-0 text-[10px] text-[var(--gray-text)]">
+                      {new Date(entry.created_at).toLocaleString()}
+                    </span>
                   </div>
                 ))}
               </div>
