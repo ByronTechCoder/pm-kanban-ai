@@ -6,6 +6,7 @@ import type { Card, Priority } from "@/lib/kanban";
 type CardEditModalProps = {
   card: Card;
   username: string;
+  labelPresets?: string[];
   onSave: (updates: Partial<Card>) => void;
   onClose: () => void;
 };
@@ -27,7 +28,7 @@ type ChecklistItem = {
   created_at: string;
 };
 
-export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModalProps) => {
+export const CardEditModal = ({ card, username, labelPresets = [], onSave, onClose }: CardEditModalProps) => {
   const [title, setTitle] = useState(card.title);
   const [details, setDetails] = useState(card.details);
   const [priority, setPriority] = useState<Priority>(card.priority ?? "none");
@@ -276,6 +277,34 @@ export const CardEditModal = ({ card, username, onSave, onClose }: CardEditModal
                   <span className="mt-1 block text-[10px] normal-case font-normal text-[var(--gray-text)]">
                     Comma-separated
                   </span>
+                  {labelPresets.length > 0 ? (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {labelPresets.map((preset) => {
+                        const active = labels.split(",").map((l) => l.trim()).includes(preset);
+                        return (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => {
+                              const current = labels.split(",").map((l) => l.trim()).filter(Boolean);
+                              if (active) {
+                                setLabels(current.filter((l) => l !== preset).join(", "));
+                              } else {
+                                setLabels([...current, preset].join(", "));
+                              }
+                            }}
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition ${
+                              active
+                                ? "bg-[var(--primary-blue)] text-white"
+                                : "bg-[var(--surface)] text-[var(--gray-text)] hover:bg-[var(--stroke)]"
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </label>
                 <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
                   Estimate (pts)

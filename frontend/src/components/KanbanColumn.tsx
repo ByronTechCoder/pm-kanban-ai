@@ -11,6 +11,7 @@ type KanbanColumnProps = {
   column: Column;
   cards: Card[];
   username: string;
+  labelPresets?: string[];
   onRename: (columnId: string, title: string) => void;
   onAddCard: (columnId: string, title: string, details: string) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
@@ -18,6 +19,7 @@ type KanbanColumnProps = {
   onDeleteColumn: (columnId: string) => void;
   onDuplicateCard: (cardId: string) => void;
   onArchiveCard: (cardId: string) => void;
+  onBulkArchive: (columnId: string) => void;
   onSetWipLimit: (columnId: string, limit: number | null) => void;
   onSetColor: (columnId: string, color: string | null) => void;
 };
@@ -26,6 +28,7 @@ export const KanbanColumn = ({
   column,
   cards,
   username,
+  labelPresets = [],
   onRename,
   onAddCard,
   onDeleteCard,
@@ -33,6 +36,7 @@ export const KanbanColumn = ({
   onDeleteColumn,
   onDuplicateCard,
   onArchiveCard,
+  onBulkArchive,
   onSetWipLimit,
   onSetColor,
 }: KanbanColumnProps) => {
@@ -184,16 +188,30 @@ export const KanbanColumn = ({
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="flex-shrink-0 rounded-lg p-1 text-[var(--gray-text)] transition hover:text-red-400"
-            title="Delete column"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-0.5">
+            {cards.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => onBulkArchive(column.id)}
+                className="flex-shrink-0 rounded-lg p-1 text-[var(--gray-text)] transition hover:text-amber-500"
+                title="Archive all cards in column"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex-shrink-0 rounded-lg p-1 text-[var(--gray-text)] transition hover:text-red-400"
+              title="Delete column"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </div>
         )}
       </div>
       <div className="flex flex-1 flex-col gap-2">
@@ -203,6 +221,7 @@ export const KanbanColumn = ({
               key={card.id}
               card={card}
               username={username}
+              labelPresets={labelPresets}
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
               onEdit={(cardId, updates) => onEditCard(cardId, updates)}
               onDuplicate={(cardId) => onDuplicateCard(cardId)}

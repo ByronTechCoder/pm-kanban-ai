@@ -16,6 +16,7 @@ from .db import (
     add_comment,
     archive_card,
     authenticate_user,
+    bulk_archive_column,
     change_password,
     board_belongs_to_user,
     card_accessible_by_user,
@@ -25,6 +26,7 @@ from .db import (
     duplicate_card,
     get_activity,
     get_archived_cards,
+    get_board_label_presets,
     get_checklist,
     get_comments,
     get_or_create_board,
@@ -36,6 +38,7 @@ from .db import (
     rename_board,
     replace_board,
     restore_card,
+    set_board_label_presets,
     update_checklist_item,
 )
 
@@ -197,6 +200,33 @@ def del_board(
     username = _require_user(user)
     if not delete_board(board_id, username):
         raise HTTPException(status_code=404, detail="board not found")
+
+
+class LabelPresetsRequest(BaseModel):
+    labels: list[str]
+
+
+@app.get("/api/boards/{board_id}/labels", response_model=list[str])
+def get_labels(
+    board_id: str,
+    user: str | None = Query(default=None),
+) -> list[str]:
+    username = _require_user(user)
+    _require_board_access(board_id, username)
+    return get_board_label_presets(board_id)
+
+
+@app.put("/api/boards/{board_id}/labels", response_model=list[str])
+def put_labels(
+    board_id: str,
+    payload: LabelPresetsRequest,
+    user: str | None = Query(default=None),
+) -> list[str]:
+    username = _require_user(user)
+    _require_board_access(board_id, username)
+    if not set_board_label_presets(board_id, payload.labels):
+        raise HTTPException(status_code=404, detail="board not found")
+    return get_board_label_presets(board_id)
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +458,24 @@ def get_board_archive(
     username = _require_user(user)
     _require_board_access(board_id, username)
     return [ArchivedCard(**c) for c in get_archived_cards(board_id)]
+
+
+class BulkArchiveResult(BaseModel):
+    archived_count: int
+
+
+@app.post("/api/boards/{board_id}/columns/{column_id}/archive-all", response_model=BulkArchiveResult, status_code=200)
+def post_bulk_archive_column(
+    board_id: str,
+    column_id: str,
+    user: str | None = Query(default=None),
+) -> BulkArchiveResult:
+    username = _require_user(user)
+    _require_board_access(board_id, username)
+    count = bulk_archive_column(column_id)
+    if count > 0:
+        log_activity(board_id, username, "bulk_archive", "column", f"Archived {count} cards from column", entity_id=column_id)
+    return BulkArchiveResult(archived_count=count)
 
 
 # ---------------------------------------------------------------------------

@@ -49,6 +49,8 @@ export const KanbanBoard = ({
   const [showBoardMenu, setShowBoardMenu] = useState(false);
   const [newBoardTitle, setNewBoardTitle] = useState("");
   const [isCreatingBoard, setIsCreatingBoard] = useState(false);
+  const [renamingBoardId, setRenamingBoardId] = useState<string | null>(null);
+  const [renameBoardTitle, setRenameBoardTitle] = useState("");
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -62,6 +64,7 @@ export const KanbanBoard = ({
     total_estimate: number;
     estimated_cards: number;
   } | null>(null);
+  const [labelPresets, setLabelPresets] = useState<string[]>([]);
   const [showArchiveView, setShowArchiveView] = useState(false);
   const [archivedCards, setArchivedCards] = useState<Array<{
     id: string; title: string; details: string; priority: string;
@@ -155,6 +158,20 @@ export const KanbanBoard = ({
     }
   }, [username]);
 
+  const loadLabelPresets = useCallback(async (boardId: string) => {
+    if (!username || !boardId) return;
+    try {
+      const resp = await fetch(
+        `/api/boards/${boardId}/labels?user=${encodeURIComponent(username)}`
+      );
+      if (resp.ok) {
+        setLabelPresets((await resp.json()) as string[]);
+      }
+    } catch {
+      // ignore
+    }
+  }, [username]);
+
   // Load boards list
   const loadBoards = useCallback(async () => {
     try {
@@ -175,6 +192,10 @@ export const KanbanBoard = ({
   useEffect(() => {
     if (activeBoardId) void loadStats(activeBoardId);
   }, [activeBoardId, loadStats, board]);
+
+  useEffect(() => {
+    if (activeBoardId) void loadLabelPresets(activeBoardId);
+  }, [activeBoardId, loadLabelPresets]);
 
   useEffect(() => {
     if (onBoardChange) {
@@ -249,7 +270,7 @@ export const KanbanBoard = ({
       ...prev,
       cards: {
         ...prev.cards,
-        [id]: { id, title, details: details || "No details yet.", priority: "none", dueDate: null, labels: "" },
+        [id]: { id, title, details: details || "No details yet.", priority: "none", dueDate: null, labels: "", estimate: null },
       },
       columns: prev.columns.map((column) =>
         column.id === columnId
@@ -408,6 +429,34 @@ export const KanbanBoard = ({
     }));
   };
 
+  const handleBulkArchive = async (columnId: string) => {
+    if (!activeBoardId) return;
+    try {
+      const resp = await fetch(
+        `/api/boards/${activeBoardId}/columns/${columnId}/archive-all?user=${encodeURIComponent(username)}`,
+        { method: "POST" }
+      );
+      if (resp.ok) {
+        // Remove all cards from the column in board state
+        setBoard((prev) => {
+          const col = prev.columns.find((c) => c.id === columnId);
+          if (!col) return prev;
+          const nextCards = { ...prev.cards };
+          col.cardIds.forEach((id) => delete nextCards[id]);
+          return {
+            ...prev,
+            columns: prev.columns.map((c) =>
+              c.id === columnId ? { ...c, cardIds: [] } : c
+            ),
+            cards: nextCards,
+          };
+        });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const handleSetColor = (columnId: string, color: string | null) => {
     setBoard((prev) => ({
       ...prev,
@@ -449,6 +498,17 @@ export const KanbanBoard = ({
       const remaining = boards.find((b) => b.id !== boardId);
       if (remaining) onBoardSwitch(remaining.id);
     }
+  };
+
+  const handleRenameBoard = async (boardId: string, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    await fetch(`/api/boards/${boardId}?user=${encodeURIComponent(username)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: trimmed }),
+    });
+    await loadBoards();
   };
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
@@ -494,19 +554,49 @@ export const KanbanBoard = ({
                     <ul className="space-y-1">
                       {boards.map((b) => (
                         <li key={b.id} className="flex items-center gap-1">
+                          {renamingBoardId === b.id ? (
+                            <input
+                              autoFocus
+                              value={renameBoardTitle}
+                              onChange={(e) => setRenameBoardTitle(e.target.value)}
+                              className="min-w-0 flex-1 rounded-xl border border-[var(--primary-blue)] px-3 py-1.5 text-sm text-[var(--navy-dark)] outline-none"
+                              onBlur={() => {
+                                void handleRenameBoard(b.id, renameBoardTitle);
+                                setRenamingBoardId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  void handleRenameBoard(b.id, renameBoardTitle);
+                                  setRenamingBoardId(null);
+                                }
+                                if (e.key === "Escape") setRenamingBoardId(null);
+                              }}
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowBoardMenu(false);
+                                onBoardSwitch(b.id);
+                              }}
+                              className={`flex-1 rounded-xl px-3 py-2 text-left text-sm font-medium transition hover:bg-[var(--surface)] ${
+                                b.id === activeBoardId
+                                  ? "bg-[var(--primary-blue)]/10 text-[var(--primary-blue)]"
+                                  : "text-[var(--navy-dark)]"
+                              }`}
+                            >
+                              {b.title}
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => {
-                              setShowBoardMenu(false);
-                              onBoardSwitch(b.id);
-                            }}
-                            className={`flex-1 rounded-xl px-3 py-2 text-left text-sm font-medium transition hover:bg-[var(--surface)] ${
-                              b.id === activeBoardId
-                                ? "bg-[var(--primary-blue)]/10 text-[var(--primary-blue)]"
-                                : "text-[var(--navy-dark)]"
-                            }`}
+                            onClick={() => { setRenamingBoardId(b.id); setRenameBoardTitle(b.title); }}
+                            className="rounded-lg p-1.5 text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+                            title="Rename board"
                           >
-                            {b.title}
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
                           </button>
                           {boards.length > 1 ? (
                             <button
@@ -678,6 +768,7 @@ export const KanbanBoard = ({
                   column={column}
                   cards={column.cardIds.map((cardId) => board.cards[cardId]).filter(Boolean)}
                   username={username}
+                  labelPresets={labelPresets}
                   onRename={handleRenameColumn}
                   onAddCard={handleAddCard}
                   onDeleteCard={handleDeleteCard}
@@ -685,6 +776,7 @@ export const KanbanBoard = ({
                   onDeleteColumn={handleDeleteColumn}
                   onDuplicateCard={handleDuplicateCard}
                   onArchiveCard={handleArchiveCard}
+                  onBulkArchive={handleBulkArchive}
                   onSetWipLimit={handleSetWipLimit}
                   onSetColor={handleSetColor}
                 />

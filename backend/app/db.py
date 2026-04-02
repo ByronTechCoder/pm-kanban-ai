@@ -44,6 +44,7 @@ def init_db() -> None:
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 title TEXT NOT NULL,
+                label_presets TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -123,6 +124,14 @@ def init_db() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
         if "password_salt" not in existing_cols:
             conn.execute("ALTER TABLE users ADD COLUMN password_salt TEXT")
+
+        # Migrate existing boards table if missing new columns
+        board_cols = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(boards)").fetchall()
+        }
+        if "label_presets" not in board_cols:
+            conn.execute("ALTER TABLE boards ADD COLUMN label_presets TEXT NOT NULL DEFAULT ''")
 
         # Migrate existing columns table if missing new columns
         col_cols = {
@@ -687,3 +696,45 @@ def get_archived_cards(board_id: str) -> list[dict[str, Any]]:
             }
             for row in rows
         ]
+
+
+# ---------------------------------------------------------------------------
+# Board label presets
+# ---------------------------------------------------------------------------
+
+def get_board_label_presets(board_id: str) -> list[str]:
+    """Return the label presets for a board as a list of strings."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT label_presets FROM boards WHERE id = ?", (board_id,)
+        ).fetchone()
+    if not row or not row["label_presets"]:
+        return []
+    return [l.strip() for l in row["label_presets"].split(",") if l.strip()]
+
+
+def set_board_label_presets(board_id: str, labels: list[str]) -> bool:
+    """Set label presets for a board. Returns False if board not found."""
+    joined = ",".join(l.strip() for l in labels if l.strip())
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE boards SET label_presets = ?, updated_at = ? WHERE id = ?",
+            (joined, _utc_now(), board_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Bulk archive
+# ---------------------------------------------------------------------------
+
+def bulk_archive_column(column_id: str) -> int:
+    """Archive all non-archived cards in a column. Returns count archived."""
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE cards SET archived = 1, updated_at = ? WHERE column_id = ? AND archived = 0",
+            (_utc_now(), column_id),
+        )
+        conn.commit()
+        return cur.rowcount
